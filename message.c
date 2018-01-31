@@ -1218,6 +1218,20 @@ flush_unicast(int dofree)
 }
 
 static void
+accumulate_prefix(struct interface *ifp, int omit,
+                  const unsigned char *prefix, unsigned char plen)
+{
+    accumulate_bytes(ifp, prefix + omit, (plen + 7) / 8 - omit);
+}
+
+static void
+accumulate_unicast_prefix(struct neighbour *neigh, int omit,
+                          const unsigned char *prefix, unsigned char plen)
+{
+    accumulate_unicast_bytes(neigh, prefix + omit, (plen + 7) / 8 - omit);
+}
+
+static void
 really_send_update(struct interface *ifp,
                    const unsigned char *id,
                    const unsigned char *prefix, unsigned char plen,
@@ -1225,20 +1239,14 @@ really_send_update(struct interface *ifp,
                    unsigned short seqno, unsigned short metric,
                    unsigned char *channels, int channels_len)
 {
-    int add_metric, v4, real_plen, omit = 0;
+    int add_metric, v4, real_plen, omit, channels_size, len;
     const unsigned char *real_prefix;
     unsigned short flags = 0;
-    int channels_size;
 
     if(!is_default(src_prefix, src_plen)) {
         debugf("Attempted to send source-specific TLV -- not implemented yet\n");
         return;
     }
-
-    if(diversity_kind != DIVERSITY_CHANNEL)
-        channels_len = -1;
-
-    channels_size = channels_len >= 0 ? channels_len + 2 : 0;
 
     if(!if_up(ifp))
         return;
@@ -1257,6 +1265,7 @@ really_send_update(struct interface *ifp,
     if(v4) {
         if(!ifp->ipv4)
             return;
+        omit = 0;
         if(!ifp->have_buffered_nh ||
            memcmp(ifp->buffered_nh, ifp->ipv4, 4) != 0) {
             start_message(ifp, MESSAGE_NH, 6);
@@ -1271,6 +1280,7 @@ really_send_update(struct interface *ifp,
         real_prefix = prefix + 12;
         real_plen = plen - 96;
     } else {
+        omit = 0;
         if(ifp->have_buffered_prefix) {
             while(omit < plen / 8 &&
                   ifp->buffered_prefix[omit] == prefix[omit])
@@ -1295,8 +1305,12 @@ really_send_update(struct interface *ifp,
         ifp->have_buffered_id = 1;
     }
 
-    start_message(ifp, MESSAGE_UPDATE, 10 + (real_plen + 7) / 8 - omit +
-                      channels_size);
+    channels_size = diversity_kind == DIVERSITY_CHANNEL && channels_len >= 0 ?
+        channels_len + 2 : 0;
+
+    len = 10 + (real_plen + 7) / 8 - omit + channels_size;
+
+    start_message(ifp, MESSAGE_UPDATE, len);
     accumulate_byte(ifp, v4 ? 1 : 2);
     accumulate_byte(ifp, flags);
     accumulate_byte(ifp, real_plen);
@@ -1304,15 +1318,14 @@ really_send_update(struct interface *ifp,
     accumulate_short(ifp, (ifp->update_interval + 5) / 10);
     accumulate_short(ifp, seqno);
     accumulate_short(ifp, metric);
-    accumulate_bytes(ifp, real_prefix + omit, (real_plen + 7) / 8 - omit);
+    accumulate_prefix(ifp, omit, real_prefix, real_plen);
     /* Note that an empty channels TLV is different from no such TLV. */
-    if(channels_len >= 0) {
+    if(channels_size > 0) {
         accumulate_byte(ifp, 2);
         accumulate_byte(ifp, channels_len);
         accumulate_bytes(ifp, channels, channels_len);
     }
-    end_message(ifp, MESSAGE_UPDATE, 10 + (real_plen + 7) / 8 - omit +
-                channels_size);
+    end_message(ifp, MESSAGE_UPDATE, len);
     if(flags & 0x80) {
         memcpy(ifp->buffered_prefix, prefix, 16);
         ifp->have_buffered_prefix = 1;
@@ -1812,7 +1825,7 @@ send_request(struct interface *ifp,
              const unsigned char *prefix, unsigned char plen,
              const unsigned char *src_prefix, unsigned char src_plen)
 {
-    int v4, pb, len;
+    int v4, len;
 
     if(!is_default(src_prefix, src_plen)) {
         debugf("Attempted to send source-specific TLV -- not implemented yet\n");
@@ -1850,16 +1863,15 @@ send_request(struct interface *ifp,
            format_prefix(src_prefix, src_plen));
 
     v4 = plen >= 96 && v4mapped(prefix);
-    pb = v4 ? ((plen - 96) + 7) / 8 : (plen + 7) / 8;
-    len = 2 + pb;
+    len = 2 + (v4 ? ((plen - 96) + 7) / 8 : (plen + 7) / 8);
 
     start_message(ifp, MESSAGE_REQUEST, len);
     accumulate_byte(ifp, v4 ? 1 : 2);
     accumulate_byte(ifp, v4 ? plen - 96 : plen);
     if(v4)
-        accumulate_bytes(ifp, prefix + 12, pb);
+        accumulate_prefix(ifp, 0, prefix + 12, plen - 96);
     else
-        accumulate_bytes(ifp, prefix, pb);
+        accumulate_prefix(ifp, 0, prefix, plen);
     end_message(ifp, MESSAGE_REQUEST, len);
 }
 
@@ -1868,7 +1880,7 @@ send_unicast_request(struct neighbour *neigh,
                      const unsigned char *prefix, unsigned char plen,
                      const unsigned char *src_prefix, unsigned char src_plen)
 {
-    int rc, v4, pb, len;
+    int rc, v4, len;
 
     if(!is_default(src_prefix, src_plen)) {
         debugf("Attempted to send source-specific TLV -- not implemented yet\n");
@@ -1899,17 +1911,16 @@ send_unicast_request(struct neighbour *neigh,
            format_prefix(src_prefix, src_plen));
 
     v4 = plen >= 96 && v4mapped(prefix);
-    pb = v4 ? ((plen - 96) + 7) / 8 : (plen + 7) / 8;
-    len = 2 + pb;
+    len = 2 + (v4 ? ((plen - 96) + 7) / 8 : (plen + 7) / 8);
 
     rc = start_unicast_message(neigh, MESSAGE_REQUEST, len);
     if(rc < 0) return;
     accumulate_unicast_byte(neigh, v4 ? 1 : 2);
     accumulate_unicast_byte(neigh, v4 ? plen - 96 : plen);
     if(v4)
-        accumulate_unicast_bytes(neigh, prefix + 12, pb);
+        accumulate_unicast_prefix(neigh, 0, prefix + 12, plen - 96);
     else
-        accumulate_unicast_bytes(neigh, prefix, pb);
+        accumulate_unicast_prefix(neigh, 0, prefix, plen);
     end_unicast_message(neigh, MESSAGE_REQUEST, len);
 }
 
@@ -1920,7 +1931,7 @@ send_multihop_request(struct interface *ifp,
                       unsigned short seqno, const unsigned char *id,
                       unsigned short hop_count)
 {
-    int v4, pb, len;
+    int v4, len;
 
     if(!is_default(src_prefix, src_plen)) {
         debugf("Attempted to send source-specific TLV -- not implemented yet\n");
@@ -1947,8 +1958,7 @@ send_multihop_request(struct interface *ifp,
            hop_count, ifp->name, format_prefix(prefix, plen),
            format_prefix(src_prefix, src_plen));
     v4 = plen >= 96 && v4mapped(prefix);
-    pb = v4 ? ((plen - 96) + 7) / 8 : (plen + 7) / 8;
-    len = 6 + 8 + pb;
+    len = 6 + 8 + (v4 ? ((plen - 96) + 7) / 8 : (plen + 7) / 8);
 
     start_message(ifp, MESSAGE_MH_REQUEST, len);
     accumulate_byte(ifp, v4 ? 1 : 2);
@@ -1958,9 +1968,9 @@ send_multihop_request(struct interface *ifp,
     accumulate_byte(ifp, v4 ? src_plen - 96 : src_plen);
     accumulate_bytes(ifp, id, 8);
     if(v4)
-        accumulate_bytes(ifp, prefix + 12, pb);
+        accumulate_prefix(ifp, 0, prefix + 12, plen - 96);
     else
-        accumulate_bytes(ifp, prefix, pb);
+        accumulate_prefix(ifp, 0, prefix, plen);
     end_message(ifp, MESSAGE_MH_REQUEST, len);
 }
 
@@ -1972,7 +1982,7 @@ send_unicast_multihop_request(struct neighbour *neigh,
                               unsigned short seqno, const unsigned char *id,
                               unsigned short hop_count)
 {
-    int rc, v4, pb, len;
+    int rc, v4, len;
 
     if(!is_default(src_prefix, src_plen)) {
         debugf("Attempted to send source-specific TLV -- not implemented yet\n");
@@ -1987,8 +1997,7 @@ send_unicast_multihop_request(struct neighbour *neigh,
            format_prefix(prefix, plen),
            format_prefix(src_prefix, src_plen), hop_count);
     v4 = plen >= 96 && v4mapped(prefix);
-    pb = v4 ? ((plen - 96) + 7) / 8 : (plen + 7) / 8;
-    len = 6 + 8 + pb;
+    len = 6 + 8 + (v4 ? ((plen - 96) + 7) / 8 : (plen + 7) / 8);
 
     rc = start_unicast_message(neigh, MESSAGE_MH_REQUEST, len);
     if(rc < 0) return;
@@ -1999,9 +2008,9 @@ send_unicast_multihop_request(struct neighbour *neigh,
     accumulate_unicast_byte(neigh, v4 ? src_plen - 96 : src_plen);
     accumulate_unicast_bytes(neigh, id, 8);
     if(v4)
-        accumulate_unicast_bytes(neigh, prefix + 12, pb);
+        accumulate_unicast_prefix(neigh, 0, prefix + 12, plen - 96);
     else
-        accumulate_unicast_bytes(neigh, prefix, pb);
+        accumulate_unicast_prefix(neigh, 0,prefix, plen);
     end_unicast_message(neigh, MESSAGE_MH_REQUEST, len);
 }
 
