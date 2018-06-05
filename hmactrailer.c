@@ -1,38 +1,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <assert.h>
-#include <sys/time.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>
 #include <openssl/sha.h>
 #include <openssl/ripemd.h>
 
 #include "hmactrailer.h"
 #include "babeld.h"
-#include "util.h"
-#include "net.h"
 #include "interface.h"
-#include "source.h"
 #include "neighbour.h"
-#include "route.h"
 #include "kernel.h"
-#include "xroute.h"
-#include "resend.h"
 #include "message.h"
-#include "configuration.h"
 
 unsigned char *key = (unsigned char *)"Ala ma kota";
 struct pseudo_header head = {0,(unsigned char *)"src", (unsigned char *)"dest",
 			     0,0};
 
-struct pseudo_header
-set_head()
-{
-    return head;
-}
-
-int
+static int
 compute_hmac(unsigned char *packet_header, unsigned char *hmac,
 	     const unsigned char *body, int bodylen, int hash_type)
 {
@@ -41,8 +25,8 @@ compute_hmac(unsigned char *packet_header, unsigned char *hmac,
     SHA_CTX key_ctx;
     unsigned char inner_hash[SHA_DIGEST_LENGTH];
     unsigned char key_hash[SHA_DIGEST_LENGTH];
-    uint8_t inner_key_pad[SHA1_BLOCK_SIZE];
-    uint8_t outer_key_pad[SHA1_BLOCK_SIZE];
+    unsigned char inner_key_pad[SHA1_BLOCK_SIZE];
+    unsigned char outer_key_pad[SHA1_BLOCK_SIZE];
     int i;
     int keylen;
 
@@ -114,7 +98,7 @@ add_hmac(unsigned char *packet_header, char *buf, int buf_len,
 }
 
 
-int
+static int
 hmac_compare(const unsigned char *packet, int bodylen,
 	     const unsigned char *hmac, int hmaclen)
 {
@@ -160,7 +144,6 @@ check_hmac(const unsigned char *packet, int packetlen, int bodylen)
 	    }
 	}
 	i += hmaclen + 2;
-	/* on suppose qu'on a que des TLV dans le trailer*/
     }
     return 0;
 }
