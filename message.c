@@ -40,6 +40,7 @@ THE SOFTWARE.
 #include "resend.h"
 #include "message.h"
 #include "configuration.h"
+#include "hmactrailer.h"
 
 unsigned char packet_header[4] = {42, 2};
 
@@ -372,6 +373,11 @@ parse_packet(const unsigned char *from, struct interface *ifp,
         fprintf(stderr, "Received truncated packet (%d + 4 > %d).\n",
                 bodylen, packetlen);
         bodylen = packetlen - 4;
+    }
+
+    if(check_hmac(packet, packetlen,bodylen) == 0){
+        fprintf(stderr, "Received wrong hmac.\n");
+	return;
     }
 
     i = 0;
@@ -912,16 +918,21 @@ void
 flushbuf(struct buffered *buf)
 {
     int rc;
-
+    int hmac_space;
     assert(buf->len <= buf->size);
 
     if(buf->len > 0) {
         debugf("  (flushing %d buffered bytes)\n", buf->len);
         DO_HTONS(packet_header + 2, buf->len);
         fill_rtt_message(buf);
+	hmac_space = add_hmac(packet_header,buf->buf,buf->len,1);
+	if(hmac_space == -1) {
+	    fprintf(stderr, "Add_hmac fail. \n");
+	    return;
+	}
         rc = babel_send(protocol_socket,
                         packet_header, sizeof(packet_header),
-                        buf->buf, buf->len,
+                        buf->buf, (buf->len + hmac_space),
                         (struct sockaddr*)&buf->sin6,
                         sizeof(buf->sin6));
         if(rc < 0)
@@ -961,15 +972,18 @@ schedule_flush_now(struct buffered *buf)
 static void
 ensure_space(struct buffered *buf, int space)
 {
-    if(buf->size - buf->len < space)
-        flushbuf(buf);
+    if(buf->size - (buf->len + MAX_HMAC_SPACE) < space){
+        buf->buf += buf->len;
+	flushbuf(buf);
+    }
 }
 
 static void
 start_message(struct buffered *buf, int type, int len)
 {
-    if(buf->size - buf->len < len + 2)
-        flushbuf(buf);
+    if(buf->size - (buf->len + MAX_HMAC_SPACE) < len + 2) {
+	flushbuf(buf);
+    }
     buf->buf[buf->len++] = type;
     buf->buf[buf->len++] = len;
 }
