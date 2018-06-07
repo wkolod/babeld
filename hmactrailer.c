@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <openssl/sha.h>
 #include <openssl/ripemd.h>
+#include <time.h>
 
 #include "hmactrailer.h"
 #include "babeld.h"
@@ -13,8 +14,7 @@
 #include "message.h"
 
 unsigned char *key = (unsigned char *)"Ala ma kota";
-struct pseudo_header head = {0,(unsigned char *)"src", (unsigned char *)"dest",
-			     0,0};
+struct pseudo_header head = {0,0};
 
 static int
 compute_hmac(unsigned char *packet_header, unsigned char *hmac,
@@ -75,6 +75,19 @@ compute_hmac(unsigned char *packet_header, unsigned char *hmac,
 }
 
 int
+add_tspc(char *buf, int buf_len)
+{
+  struct timespec current_time;
+  int i = buf_len;
+  buf[i] = TSPC_TYPE;
+  buf[i+1] = sizeof(current_time.tv_sec);
+  buf += 2;
+  clock_gettime(CLOCK_REALTIME, &current_time);
+  memcpy(buf, &current_time.tv_sec, sizeof(current_time.tv_sec));
+  return sizeof(current_time.tv_sec);
+}
+
+int
 add_hmac(unsigned char *packet_header, char *buf, int buf_len,
 	 int nb_hmac)
 {
@@ -124,6 +137,34 @@ hmac_compare(const unsigned char *packet, int bodylen,
     if(memcmp(true_hmac, hmac, hmaclen)==0)
 	return 1;
     return 0;
+}
+
+int
+check_tspc(const unsigned char *packet, int bodylen,
+	   const unsigned char last_tspc)
+{
+  int i;
+  const unsigned char *message;
+  unsigned char type, len;
+  int nb_tspc = 0;
+  
+  i = 0;
+  while(i < bodylen) {
+    message = packet + 4 + i;
+    type = message[0];
+    if(type == MESSAGE_PAD1) {
+      i++;
+      continue;
+    }
+    len = message[1];
+    if(type == TSPC_TYPE) {
+      nb_tspc++;
+    }
+    i += len + 2;
+  }
+  if(nb_tspc > 1)
+    return 0;
+  return 1;
 }
 
 int
