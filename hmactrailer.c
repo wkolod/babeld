@@ -6,15 +6,16 @@
 #include <openssl/ripemd.h>
 #include <time.h>
 
-#include "hmactrailer.h"
 #include "babeld.h"
 #include "interface.h"
+#include "hmactrailer.h"
 #include "neighbour.h"
 #include "kernel.h"
+#include "anm.h"
 #include "message.h"
+#include "util.h"
 
 unsigned char *key = (unsigned char *)"Ala ma kota";
-struct pseudo_header head = {0,0};
 
 static int
 compute_hmac(unsigned char *packet_header, unsigned char *hmac,
@@ -49,8 +50,8 @@ compute_hmac(unsigned char *packet_header, unsigned char *hmac,
             }
             SHA1_Init(&inner_ctx);
             SHA1_Update(&inner_ctx, inner_key_pad, SHA1_BLOCK_SIZE);
-            SHA1_Update(&inner_ctx, head.addr_dest, sizeof(head.addr_dest));
-            SHA1_Update(&inner_ctx, head.addr_src, sizeof(head.addr_src));
+            /*SHA1_Update(&inner_ctx, head.addr_dst, sizeof(head.addr_dst));
+	      SHA1_Update(&inner_ctx, head.addr_src, sizeof(head.addr_src));*/
             SHA1_Update(&inner_ctx, packet_header, 4);
             SHA1_Update(&inner_ctx, body, bodylen);
             SHA1_Final(inner_hash, &inner_ctx);
@@ -75,19 +76,6 @@ compute_hmac(unsigned char *packet_header, unsigned char *hmac,
 }
 
 int
-add_tspc(char *buf, int buf_len)
-{
-  struct timespec current_time;
-  int i = buf_len;
-  buf[i] = TSPC_TYPE;
-  buf[i+1] = sizeof(current_time.tv_sec);
-  buf += 2;
-  clock_gettime(CLOCK_REALTIME, &current_time);
-  memcpy(buf, &current_time.tv_sec, sizeof(current_time.tv_sec));
-  return sizeof(current_time.tv_sec);
-}
-
-int
 add_hmac(unsigned char *packet_header, char *buf, int buf_len,
 	 int nb_hmac)
 {
@@ -105,7 +93,7 @@ add_hmac(unsigned char *packet_header, char *buf, int buf_len,
 	}
 	i += hmaclen + 2;
 	hmac_space += hmaclen + 2;
-	nb_hmac --;
+	nb_hmac--;
     }
     return hmac_space;
 }
@@ -134,20 +122,25 @@ hmac_compare(const unsigned char *packet, int bodylen,
        fprintf(stderr, "Length inconsistency of two hmacs.\n");
 		return -1;
     }
-    if(memcmp(true_hmac, hmac, hmaclen)==0)
+    if(memcmp(true_hmac, hmac, hmaclen) == 0)
 	return 1;
     return 0;
 }
 
 int
 check_tspc(const unsigned char *packet, int bodylen,
-	   const unsigned char last_tspc)
+	   unsigned char *from, struct interface *ifp)
 {
   int i;
   const unsigned char *message;
   unsigned char type, len;
+  struct anm *anm;
+  anm = find_anm(from, ifp);
+  if(!anm) {
+    printf("No entry for ANM table.\n");
+    return 0;
+  }
   int nb_tspc = 0;
-  
   i = 0;
   while(i < bodylen) {
     message = packet + 4 + i;
@@ -159,6 +152,9 @@ check_tspc(const unsigned char *packet, int bodylen,
     len = message[1];
     if(type == TSPC_TYPE) {
       nb_tspc++;
+      if(memcmp(&anm->last_ts, message + 2, 4) >= 0 ||
+	 memcmp(&anm->last_pc, message + 6, 2) >= 0)
+	return 0;
     }
     i += len + 2;
   }
@@ -168,18 +164,19 @@ check_tspc(const unsigned char *packet, int bodylen,
 }
 
 int
-check_hmac(const unsigned char *packet, int packetlen, int bodylen)
+check_hmac(const unsigned char *packet, int packetlen, int bodylen,
+	   unsigned char *src, unsigned char *dst)
 {
     int i = bodylen + 4;
     int hmaclen;
     while(i < packetlen){
-        hmaclen = packet [i+1];
+        hmaclen = packet[i+1];
         if(packet[i] == HMAC_TYPE){
 	    if(hmaclen + i > packetlen){
 	        fprintf(stderr, "Received truncated hmac.\n");
 		return -1;
 	    }
-	    if(hmac_compare(packet, bodylen, packet + i + 2 , hmaclen)){
+	    if(hmac_compare(packet, bodylen, packet + i + 2, hmaclen)){
 		printf("accept hmac\n");
 		return 1;
 	    }

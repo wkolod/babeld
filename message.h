@@ -35,6 +35,7 @@ THE SOFTWARE.
 #define MESSAGE_REQUEST 9
 #define MESSAGE_MH_REQUEST 10
 /* 11 and 12 are for authentication */
+#define MESSAGE_TSPC 11
 #define MESSAGE_UPDATE_SRC_SPECIFIC 13
 #define MESSAGE_REQUEST_SRC_SPECIFIC 14
 #define MESSAGE_MH_REQUEST_SRC_SPECIFIC 15
@@ -57,6 +58,7 @@ void parse_packet(const unsigned char *from, struct interface *ifp,
                   const unsigned char *packet, int packetlen);
 void flushbuf(struct buffered *buf);
 void flushupdates(struct interface *ifp);
+void add_tspc(struct buffered *buf);
 void send_ack(struct neighbour *neigh, unsigned short nonce,
               unsigned short interval);
 void send_hello_noihu(struct interface *ifp, unsigned interval);

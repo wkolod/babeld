@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <time.h>
 
 #include "babeld.h"
 #include "util.h"
@@ -48,6 +49,9 @@ int split_horizon = 1;
 
 unsigned short myseqno = 0;
 struct timeval seqno_time = {0, 0};
+
+unsigned int last_ts = 0;
+unsigned short last_pc = 0;
 
 extern const unsigned char v4prefix[16];
 
@@ -375,8 +379,14 @@ parse_packet(const unsigned char *from, struct interface *ifp,
         bodylen = packetlen - 4;
     }
 
-    if(check_hmac(packet, packetlen,bodylen) == 0){
+    if(check_hmac(packet, packetlen, bodylen, (unsigned char *)neigh->address,
+		  (unsigned char *)neigh->address) == 0){
         fprintf(stderr, "Received wrong hmac.\n");
+	return;
+    }
+
+    if(check_tspc(packet, bodylen, (unsigned char *)neigh->address, ifp) == 0){
+        fprintf(stderr, "Received wrong TS/PC.\n");
 	return;
     }
 
@@ -946,6 +956,7 @@ flushbuf(struct buffered *buf)
     buf->have_prefix = 0;
     buf->timeout.tv_sec = 0;
     buf->timeout.tv_usec = 0;
+    add_tspc(buf);
 }
 
 static void
@@ -1023,6 +1034,20 @@ accumulate_bytes(struct buffered *buf,
 {
     memcpy(buf->buf + buf->len, value, len);
     buf->len += len;
+}
+
+void
+add_tspc(struct buffered *buf)
+{
+  struct timespec realtime;
+  start_message(buf, MESSAGE_TSPC, 6);
+  clock_gettime(CLOCK_REALTIME, &realtime);
+  accumulate_int(buf, realtime.tv_sec);
+  last_ts = realtime.tv_sec;
+  last_pc++;
+  printf("adding ts/ps with ts: %u and pc: %hu \n", last_ts, last_pc);
+  accumulate_short(buf, last_pc);
+  end_message(buf, MESSAGE_TSPC, 6);
 }
 
 void
