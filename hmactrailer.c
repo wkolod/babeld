@@ -14,10 +14,10 @@
 #include "message.h"
 
 unsigned char *key = (unsigned char *)"Ala ma kota";
-struct pseudo_header head = {0,0};
 
 static int
-compute_hmac(unsigned char *packet_header, unsigned char *hmac,
+compute_hmac(unsigned char *src, unsigned char *dst,
+	     unsigned char *packet_header, unsigned char *hmac,
 	     const unsigned char *body, int bodylen, int hash_type)
 {
     SHA_CTX inner_ctx;
@@ -29,8 +29,7 @@ compute_hmac(unsigned char *packet_header, unsigned char *hmac,
     unsigned char outer_key_pad[SHA1_BLOCK_SIZE];
     int i;
     int keylen;
-
-
+    
     switch(hash_type) {
         case 0:
 	  keylen = sizeof(key);
@@ -49,8 +48,8 @@ compute_hmac(unsigned char *packet_header, unsigned char *hmac,
             }
             SHA1_Init(&inner_ctx);
             SHA1_Update(&inner_ctx, inner_key_pad, SHA1_BLOCK_SIZE);
-            SHA1_Update(&inner_ctx, head.addr_dest, sizeof(head.addr_dest));
-            SHA1_Update(&inner_ctx, head.addr_src, sizeof(head.addr_src));
+            SHA1_Update(&inner_ctx, dst, 16);
+            SHA1_Update(&inner_ctx, src, 16);
             SHA1_Update(&inner_ctx, packet_header, 4);
             SHA1_Update(&inner_ctx, body, bodylen);
             SHA1_Final(inner_hash, &inner_ctx);
@@ -89,16 +88,25 @@ add_tspc(char *buf, int buf_len)
 
 int
 add_hmac(unsigned char *packet_header, char *buf, int buf_len,
-	 int nb_hmac)
+	 int nb_hmac, unsigned char *addr_src, unsigned char *addr_dst)
 {
     int i = buf_len;
     int hmaclen;
     int hmac_space = 0;
-    printf("add_hmac\n");
+    
+    printf("add_hmac \n src = [");
+    for(i = 0; i < 16; i++)
+	printf("%u, ", addr_src[i]);
+    printf("] \n dst = [");
+    for(i = 0; i < 16; i++)
+	printf("%u, ", addr_dst[i]);
+    printf("] \n");
+    
     while (nb_hmac > 0){
         buf[i] = HMAC_TYPE;
 	buf[i+1] = DIGEST_LEN;
-	hmaclen = compute_hmac(packet_header, (unsigned char *)buf + i + 2,
+	hmaclen = compute_hmac(addr_src, addr_dst, packet_header,
+			       (unsigned char *)buf + i + 2,
 			       (unsigned char *)buf, buf_len, 0);
 	if(hmaclen < 0){
 	    return -1;
@@ -112,14 +120,15 @@ add_hmac(unsigned char *packet_header, char *buf, int buf_len,
 
 
 static int
-hmac_compare(const unsigned char *packet, int bodylen,
+hmac_compare(unsigned char *src, unsigned char *dst,
+	     const unsigned char *packet, int bodylen,
 	     const unsigned char *hmac, int hmaclen)
 {
     int j;
     unsigned char true_hmac[DIGEST_LEN];
     unsigned char packet_header[4] = {packet[0], packet[1], packet[2],
 				      packet[3]};
-    int true_hmaclen = compute_hmac(packet_header, true_hmac,
+    int true_hmaclen = compute_hmac(src, dst, packet_header, true_hmac,
 				    packet + 4, bodylen, 0);
     printf("hmac_compare: %d.", hmaclen);
     for(j = 0; j < hmaclen; j++) {
@@ -168,10 +177,20 @@ check_tspc(const unsigned char *packet, int bodylen,
 }
 
 int
-check_hmac(const unsigned char *packet, int packetlen, int bodylen)
+check_hmac(const unsigned char *packet, int packetlen, int bodylen,
+	   unsigned char *addr_src, unsigned char *addr_dst)
 {
     int i = bodylen + 4;
     int hmaclen;
+    
+    printf("check_hmac \n src = [");
+    for(i = 0; i < 16; i++)
+	printf("%u, ", addr_src[i]);
+    printf("] \n dst = [");
+    for(i = 0; i < 16; i++)
+	printf("%u, ", addr_dst[i]);
+    printf("] \n");
+    
     while(i < packetlen){
         hmaclen = packet [i+1];
         if(packet[i] == HMAC_TYPE){
@@ -179,7 +198,8 @@ check_hmac(const unsigned char *packet, int packetlen, int bodylen)
 	        fprintf(stderr, "Received truncated hmac.\n");
 		return -1;
 	    }
-	    if(hmac_compare(packet, bodylen, packet + i + 2 , hmaclen)){
+	    if(hmac_compare(addr_src, addr_dst, packet, bodylen,
+			    packet + i + 2 , hmaclen)){
 		printf("accept hmac\n");
 		return 1;
 	    }
