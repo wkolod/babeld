@@ -141,36 +141,43 @@ int
 check_tspc(const unsigned char *packet, int bodylen,
 	   unsigned char *from, struct interface *ifp)
 {
-  int i;
-  const unsigned char *message;
-  unsigned char type, len;
-  struct anm *anm;
-  anm = find_anm(from, ifp);
-  if(!anm) {
-    printf("No entry for ANM table.\n");
-    return 0;
-  }
-  int nb_tspc = 0;
-  i = 0;
-  while(i < bodylen) {
-    message = packet + 4 + i;
-    type = message[0];
-    if(type == MESSAGE_PAD1) {
-      i++;
-      continue;
+    int i, nb_tspc;
+    const unsigned char *message;
+    unsigned char type, len;
+    struct anm *anm;
+    anm = find_anm(from, ifp);
+    if(anm == NULL) {
+	printf("No entry for ANM table.\n");
+	if(add_anm(from, ifp, 0, 0) == -1) {
+	    fprintf(stderr,
+		    "Not enough space for adding new entry to ANM table.\n");
+		return -1;
+	}
     }
-    len = message[1];
-    if(type == TSPC_TYPE) {
-      nb_tspc++;
-      if(memcmp(&anm->last_ts, message + 2, 4) >= 0 ||
-	 memcmp(&anm->last_pc, message + 6, 2) >= 0)
+    nb_tspc = 0;
+    i = 0;
+    while(i < bodylen) {
+	message = packet + 4 + i;
+	type = message[0];
+	if(type == MESSAGE_PAD1) {
+	    i++;
+	    continue;
+	}
+	len = message[1];
+	if(type == TSPC_TYPE) {
+	    nb_tspc++;
+	    if(memcmp(&anm->last_ts, message + 2, 4) >= 0 ||
+	       memcmp(&anm->last_pc, message + 6, 2) >= 0)
+		return 0;
+	    memcpy(&anm->last_ts, message + 2, 4);
+	    memcpy(&anm->last_pc, message + 6, 2);
+	}
+	i += len + 2;
+    }
+    if(nb_tspc > 1)
 	return 0;
-    }
-    i += len + 2;
-  }
-  if(nb_tspc > 1)
-    return 0;
-  return 1;
+    printf("accept TS/PC.\n");
+    return 1;
 }
 
 int

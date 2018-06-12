@@ -25,8 +25,7 @@ find_anm(const unsigned char *from, const struct interface *ifp)
 {
     int i;
     for(i = 0; i < numanms; i++) {
-      if(memcmp(anms[i].from, from, 16) == 0 &&
-	 strcmp(anms[i].ifp.name, ifp->name) == 0)
+      if(memcmp(anms[i].from, from, 16) == 0 && anms[i].ifp == ifp)
             return &anms[i];
     }
     return NULL;
@@ -54,7 +53,7 @@ add_anm(unsigned char *from, struct interface *ifp, unsigned int last_ts,
     }
 
     memcpy(anms[numanms].from, from, 16);
-    anms[numanms].ifp = *ifp;
+    anms[numanms].ifp = ifp;
     anms[numanms].last_ts = last_ts;
     anms[numanms].last_pc = last_pc;
     numanms++;

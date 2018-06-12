@@ -1,6 +1,6 @@
 struct anm {
   unsigned char from[16];
-  struct interface ifp;
+  struct interface *ifp;
   unsigned int last_ts;
   unsigned short last_pc;
 };
