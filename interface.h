@@ -88,6 +88,7 @@ struct buffered {
     char have_id;
     char have_nh;
     char have_prefix;
+    unsigned char ll[16];
     unsigned char id[8];
     unsigned char nh[4];
     unsigned char prefix[16];

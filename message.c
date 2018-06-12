@@ -326,7 +326,7 @@ network_address(int ae, const unsigned char *a, unsigned int len,
 
 void
 parse_packet(const unsigned char *from, struct interface *ifp,
-             const unsigned char *packet, int packetlen)
+             const unsigned char *packet, int packetlen, int *is_unicast)
 {
     int i;
     const unsigned char *message;
@@ -379,10 +379,19 @@ parse_packet(const unsigned char *from, struct interface *ifp,
         bodylen = packetlen - 4;
     }
 
-    if(check_hmac(packet, packetlen, bodylen, (unsigned char *)neigh->address,
-		  (unsigned char *)neigh->address) == 0){
-        fprintf(stderr, "Received wrong hmac.\n");
-	return;
+    if(is_unicast){
+	if(check_hmac(packet, packetlen, bodylen, neigh->address,
+		      *neigh->ifp->ll) == 0){
+	    fprintf(stderr, "Received wrong hmac.\n");
+	    return;
+	}
+    }
+    else {/*a revoir*/
+        if(check_hmac(packet, packetlen, bodylen, neigh->address,
+                      neigh->buf.sin6.sin6_addr.s6_addr) == 0){
+            fprintf(stderr, "Received wrong hmac.\n");
+            return;
+        }
     }
 
     if(check_tspc(packet, bodylen, (unsigned char *)neigh->address, ifp) == 0){
@@ -935,7 +944,8 @@ flushbuf(struct buffered *buf)
         debugf("  (flushing %d buffered bytes)\n", buf->len);
         DO_HTONS(packet_header + 2, buf->len);
         fill_rtt_message(buf);
-	hmac_space = add_hmac(packet_header,buf->buf,buf->len,1);
+	hmac_space = add_hmac(packet_header, buf->buf, buf->len, 1, buf->ll,
+			      buf->sin6.sin6_addr.s6_addr);
 	if(hmac_space == -1) {
 	    fprintf(stderr, "Add_hmac fail. \n");
 	    return;

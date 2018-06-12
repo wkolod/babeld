@@ -113,6 +113,7 @@ find_neighbour(const unsigned char *address, struct interface *ifp)
     memcpy(&neigh->buf.sin6.sin6_addr, address, 16);
     neigh->buf.sin6.sin6_port = htons(protocol_port);
     neigh->buf.sin6.sin6_scope_id = ifp->ifindex;
+    memcpy(neigh->buf.ll, ifp->ll[0], 16);
     neigh->next = neighs;
     neighs = neigh;
     local_notify_neighbour(neigh, LOCAL_ADD);
