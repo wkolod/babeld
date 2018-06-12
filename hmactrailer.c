@@ -82,7 +82,7 @@ add_hmac(unsigned char *packet_header, char *buf, int buf_len,
     int i = buf_len;
     int hmaclen;
     int hmac_space = 0;
-    
+
     printf("add_hmac %s -> %s\n",
 	   format_address(addr_src), format_address(addr_dst));
 
@@ -142,11 +142,10 @@ check_tspc(const unsigned char *packet, int bodylen,
     struct anm *anm;
     anm = find_anm(from, ifp);
     if(anm == NULL) {
-	printf("No entry for ANM table.\n");
-	if(add_anm(from, ifp, 0, 0) == -1) {
-	    fprintf(stderr,
-		    "Not enough space for adding new entry to ANM table.\n");
-		return -1;
+	anm = add_anm(from, ifp, 0, 0);
+        if(anm == NULL) {
+	    fprintf(stderr, "Couldn't create ANM.\n");
+            return -1;
 	}
     }
     nb_tspc = 0;
@@ -181,7 +180,7 @@ check_hmac(const unsigned char *packet, int packetlen, int bodylen,
 {
     int i = bodylen + 4;
     int hmaclen;
-    
+
     printf("check_hmac %s -> %s\n",
 	   format_address(addr_src), format_address(addr_dst));
     while(i < packetlen){

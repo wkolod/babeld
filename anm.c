@@ -31,7 +31,7 @@ find_anm(const unsigned char *from, const struct interface *ifp)
     return NULL;
 }
 
-int
+struct anm *
 add_anm(unsigned char *from, struct interface *ifp, unsigned int last_ts,
 	unsigned short last_pc)
 {
@@ -39,7 +39,7 @@ add_anm(unsigned char *from, struct interface *ifp, unsigned int last_ts,
     if(anm) {
         anm->last_ts = last_ts;
         anm->last_pc = last_pc;
-        return 1;
+        return anm;
     }
 
     if(numanms >= maxanms) {
@@ -47,7 +47,7 @@ add_anm(unsigned char *from, struct interface *ifp, unsigned int last_ts,
         int n = maxanms < 1 ? 8 : 2 * maxanms;
         new_anms = realloc(anms, n * sizeof(struct anm));
         if(new_anms == NULL)
-            return -1;
+            return NULL;
         maxanms = n;
         anms = new_anms;
     }
@@ -57,5 +57,5 @@ add_anm(unsigned char *from, struct interface *ifp, unsigned int last_ts,
     anms[numanms].last_ts = last_ts;
     anms[numanms].last_pc = last_pc;
     numanms++;
-    return 1;
+    return &anms[numanms - 1];
 }
