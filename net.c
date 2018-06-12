@@ -123,14 +123,16 @@ babel_socket(int port)
 
 int
 babel_recv(int s, void *buf, int buflen, struct sockaddr *sin, int slen,
-	   int *is_unicast)
+	   int *is_unicast_return, unsigned char *src_return)
 {
     struct iovec iovec;
     struct msghdr msg;
     unsigned char cmsgbuf[128];
     struct cmsghdr *cmsg;
     int rc;
-
+    int is_unicast = -1;
+    unsigned char src[16] = {0};
+    
     memset(&msg, 0, sizeof(msg));
     iovec.iov_base = buf;
     iovec.iov_len = buflen;
@@ -145,24 +147,23 @@ babel_recv(int s, void *buf, int buflen, struct sockaddr *sin, int slen,
     if(rc < 0)
 	return rc;
 
-    if (is_unicast != NULL) {
-	*is_unicast = -1;
-	for(cmsg = CMSG_FIRSTHDR(&msg);
-	    cmsg != NULL;
-	    cmsg = CMSG_NXTHDR(&msg, cmsg)) {
-	    if(cmsg->cmsg_level == IPPROTO_IPV6 &&
-	       cmsg->cmsg_type == IPV6_PKTINFO) {
-		struct in6_pktinfo *info =(struct in6_pktinfo*)CMSG_DATA(cmsg);
-		*is_unicast = !IN6_IS_ADDR_MULTICAST(&info->ipi6_addr);
-		break;
-	    }
+    memset(src, 0, 16);
+    cmsg = CMSG_FIRSTHDR(&msg);
+    while(cmsg != NULL) {
+	if(cmsg->cmsg_level == IPPROTO_IPV6 &&
+	   cmsg->cmsg_type == IPV6_PKTINFO) {
+	    struct in6_pktinfo *info =(struct in6_pktinfo*)CMSG_DATA(cmsg);
+	    memcpy(src, info->ipi6_addr.s6_addr, 16);
+	    is_unicast = !IN6_IS_ADDR_MULTICAST(&info->ipi6_addr);
+	    break;
 	}
-	if(*is_unicast < 0) {
-	    fprintf(stderr,
-		    "babel_recv: Couldn't determine source of packet.\n");
-	    *is_unicast = 0;
-	}
+	cmsg = CMSG_NXTHDR(&msg, cmsg);
     }
+
+    if(src_return != NULL)
+	memcpy(src_return, src, 16);
+    if(is_unicast_return != NULL)
+	*is_unicast_return = is_unicast;
     return rc;
 }
 

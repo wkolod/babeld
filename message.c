@@ -326,7 +326,8 @@ network_address(int ae, const unsigned char *a, unsigned int len,
 
 void
 parse_packet(const unsigned char *from, struct interface *ifp,
-             const unsigned char *packet, int packetlen, int *is_unicast)
+             const unsigned char *packet, int packetlen, int *is_unicast,
+	     unsigned char *send_addr)
 {
     int i;
     const unsigned char *message;
@@ -386,9 +387,12 @@ parse_packet(const unsigned char *from, struct interface *ifp,
 	    return;
 	}
     }
-    else {/*a revoir*/
+    else {
+	if(send_addr == 0){
+	    fprintf(stderr, "Error multicast address.\n");
+	}
         if(check_hmac(packet, packetlen, bodylen, neigh->address,
-                      neigh->buf.sin6.sin6_addr.s6_addr) == 0){
+                      send_addr) == 0){
             fprintf(stderr, "Received wrong hmac.\n");
             return;
         }

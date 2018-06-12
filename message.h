@@ -55,7 +55,8 @@ extern int split_horizon;
 extern unsigned char packet_header[4];
 
 void parse_packet(const unsigned char *from, struct interface *ifp,
-                  const unsigned char *packet, int packetlen, int *is_unicast);
+                  const unsigned char *packet, int packetlen, int *is_unicast,
+		  unsigned char *send_addr);
 void flushbuf(struct buffered *buf);
 void flushupdates(struct interface *ifp);
 void add_tspc(struct buffered *buf);

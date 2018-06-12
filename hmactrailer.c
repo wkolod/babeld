@@ -83,14 +83,9 @@ add_hmac(unsigned char *packet_header, char *buf, int buf_len,
     int hmaclen;
     int hmac_space = 0;
     
-    printf("add_hmac \n src = [");
-    for(i = 0; i < 16; i++)
-	printf("%u, ", addr_src[i]);
-    printf("] \n dst = [");
-    for(i = 0; i < 16; i++)
-	printf("%u, ", addr_dst[i]);
-    printf("] \n");
-    
+    printf("add_hmac %s -> %s\n",
+	   format_address(addr_src), format_address(addr_dst));
+
     while (nb_hmac > 0){
         buf[i] = HMAC_TYPE;
 	buf[i+1] = DIGEST_LEN;
@@ -187,14 +182,8 @@ check_hmac(const unsigned char *packet, int packetlen, int bodylen,
     int i = bodylen + 4;
     int hmaclen;
     
-    printf("check_hmac \n src = [");
-    for(i = 0; i < 16; i++)
-	printf("%u, ", addr_src[i]);
-    printf("] \n dst = [");
-    for(i = 0; i < 16; i++)
-	printf("%u, ", addr_dst[i]);
-    printf("] \n");
-    
+    printf("check_hmac %s -> %s\n",
+	   format_address(addr_src), format_address(addr_dst));
     while(i < packetlen){
         hmaclen = packet[i+1];
         if(packet[i] == HMAC_TYPE){
