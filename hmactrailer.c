@@ -31,7 +31,7 @@ compute_hmac(unsigned char *src, unsigned char *dst,
     unsigned char outer_key_pad[SHA1_BLOCK_SIZE];
     int i;
     int keylen;
-    
+
     switch(hash_type) {
         case 0:
 	  keylen = sizeof(key);
@@ -132,6 +132,22 @@ hmac_compare(unsigned char *src, unsigned char *dst,
     return 0;
 }
 
+static int
+compare_tspc(unsigned int ts1, unsigned short pc1,
+             unsigned int ts2, unsigned short pc2)
+{
+    if(ts1 < ts2)
+        return -1;
+    else if(ts1 > ts2)
+        return +1;
+    else if(pc1 < pc2)
+        return -1;
+    else if(pc1 > pc2)
+        return +1;
+    else
+        return 0;
+}
+
 int
 check_tspc(const unsigned char *packet, int bodylen,
 	   unsigned char *from, struct interface *ifp)
@@ -159,18 +175,19 @@ check_tspc(const unsigned char *packet, int bodylen,
 	}
 	len = message[1];
 	if(type == TSPC_TYPE) {
-	    nb_tspc++;
-	    if(memcmp(&anm->last_ts, message + 2, 4) >= 0 ||
-	       memcmp(&anm->last_pc, message + 6, 2) >= 0)
+            unsigned int ts;
+            unsigned short pc;
+            DO_NTOHL(ts, message + 2);
+            DO_NTOHS(pc, message + 4);
+	    if(compare_tspc(anm->last_ts, anm->last_pc, ts, pc) >= 0)
 		return 0;
-	    memcpy(&anm->last_ts, message + 2, 4);
-	    memcpy(&anm->last_pc, message + 6, 2);
-	}
+            anm->last_ts = ts;
+            anm->last_pc = pc;
+        }
 	i += len + 2;
     }
     if(nb_tspc > 1)
 	return 0;
-    printf("accept TS/PC.\n");
     return 1;
 }
 
