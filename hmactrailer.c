@@ -177,7 +177,6 @@ check_tspc(const unsigned char *packet, int bodylen,
 	if(type == TSPC_TYPE) {
             unsigned int ts;
             unsigned short pc;
-	    nb_tspc ++;
             DO_NTOHL(ts, message + 2);
             DO_NTOHS(pc, message + 4);
 	    printf("Last TS: %u, last PC: %hu \n", anm->last_ts, anm->last_pc);
