@@ -393,8 +393,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
 	    fprintf(stderr, "Received wrong hmac.\n");
 	    return;
 	}
-    }
-    else {
+    } else {
 	if(send_addr == 0){
 	    fprintf(stderr, "Error multicast address.\n");
 	}
@@ -867,7 +866,9 @@ parse_packet(const unsigned char *from, struct interface *ifp,
                    format_eui64(router_id), seqno);
             handle_request(neigh, prefix, plen, src_prefix, src_plen,
                            hopc, seqno, router_id);
-        } else {
+        } else if(type == MESSAGE_TSPC) {
+	    /* We're dealing with the TS/PC message elsewhere. */
+	} else {
             debugf("Received unknown packet type %d from %s on %s.\n",
                    type, format_address(from), ifp->name);
         }

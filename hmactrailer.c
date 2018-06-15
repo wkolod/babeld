@@ -178,7 +178,7 @@ check_tspc(const unsigned char *packet, int bodylen,
             unsigned int ts;
             unsigned short pc;
             DO_NTOHL(ts, message + 2);
-            DO_NTOHS(pc, message + 4);
+            DO_NTOHS(pc, message + 6);
 	    printf("Last TS: %u, last PC: %hu \n", anm->last_ts, anm->last_pc);
 	    printf("TS: %u, PC: %hu \n", ts, pc);
 	    if(compare_tspc(anm->last_ts, anm->last_pc, ts, pc) >= 0)
@@ -189,14 +189,11 @@ check_tspc(const unsigned char *packet, int bodylen,
         }
 	i += len + 2;
     }
-    if(nb_tspc > 1) {
-	printf("More than one TS/PC.\n");
+    if(nb_tspc != 1) {
+	printf("Refuse TS/PC.\n");
 	return 0;
     }
-    if(nb_tspc == 1)
-	printf("Accept TS/PC.\n");
-    else
-	printf("No TS/PC.\n");
+    printf("Accept TS/PC.\n");
     return 1;
 }
 
