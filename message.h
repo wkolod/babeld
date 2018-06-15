@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 #define MAX_BUFFERED_UPDATES 200
 #define MAX_HMAC_SPACE 48
+
 #define TLV_TSPC_LEN 8
 
 #define MESSAGE_PAD1 0
@@ -46,7 +47,7 @@ THE SOFTWARE.
 #define SUBTLV_PADN 1
 #define SUBTLV_DIVERSITY 2 /* Also known as babelz. */
 #define SUBTLV_TIMESTAMP 3 /* Used to compute RTT. */
-#define SUBTLV_TSPC 4 /* Echo of the last TSPC heard from the neighbour */
+#define SUBTLV_ECHO 4
 
 extern unsigned short myseqno;
 extern struct timeval seqno_time;

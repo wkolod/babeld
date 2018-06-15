@@ -42,6 +42,7 @@ THE SOFTWARE.
 #include "message.h"
 #include "configuration.h"
 #include "hmactrailer.h"
+#include "anm.h"
 
 unsigned char packet_header[4] = {42, 2};
 
@@ -266,7 +267,13 @@ parse_ihu_subtlv(const unsigned char *a, int alen,
                         "Received incorrect RTT sub-TLV on IHU.\n");
                 /* But don't break. */
             }
-        } else {
+        } else if(type == SUBTLV_ECHO){
+	    unsigned int ts;
+	    unsigned short pc;
+	    DO_NTOHL(ts, a + i + 2);
+	    DO_NTOHS(pc, a + i + 6);
+	    printf("(echo)TS:%u, PC: %hu.\n" ,ts, pc);
+	} else {
             debugf("Received unknown%s IHU sub-TLV %d.\n",
                    (type & 0x80) != 0 ? " mandatory" : "", type);
             if((type & 0x80) != 0)
@@ -400,7 +407,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
 
     if(check_tspc(packet, bodylen, (unsigned char *)neigh->address, ifp) == 0){
         fprintf(stderr, "Received wrong TS/PC.\n");
-	return;
+        return;
     }
 
     i = 0;
@@ -1053,15 +1060,15 @@ accumulate_bytes(struct buffered *buf,
 void
 add_tspc(struct buffered *buf)
 {
-  struct timespec realtime;
-  start_message(buf, MESSAGE_TSPC, 6);
-  clock_gettime(CLOCK_REALTIME, &realtime);
-  accumulate_int(buf, realtime.tv_sec);
-  last_ts = realtime.tv_sec;
-  last_pc++;
-  debugf("adding ts/pc with ts: %u and pc: %hu \n", last_ts, last_pc);
-  accumulate_short(buf, last_pc);
-  end_message(buf, MESSAGE_TSPC, 6);
+    struct timespec realtime;
+    start_message(buf, MESSAGE_TSPC, 6);
+    clock_gettime(CLOCK_REALTIME, &realtime);
+    accumulate_int(buf, realtime.tv_sec);
+    last_ts = realtime.tv_sec;
+    last_pc++;
+    printf("adding ts/ps with ts: %u and pc: %hu \n", last_ts, last_pc);
+    accumulate_short(buf, last_pc);
+    end_message(buf, MESSAGE_TSPC, 6);
 }
 
 void
@@ -1669,14 +1676,14 @@ send_self_update(struct interface *ifp)
 }
 
 void
-buffer_ihu(struct buffered *buf, unsigned short rxcost,
+buffer_ihu(struct interface *ifp, struct buffered *buf, unsigned short rxcost,
            unsigned short interval, const unsigned char *address,
-           int rtt_data, unsigned int t1, unsigned int t2)
+           int rtt_data, int echo, unsigned int t1, unsigned int t2)
 {
     int msglen, ll;
 
     ll = linklocal(address);
-    msglen = (ll ? 14 : 200) + (rtt_data ? 10 : 0);
+    msglen = (ll ? 14 : 200) + (rtt_data ? 10 : 0) + (echo ? 8 : 0);
 
     start_message(buf, MESSAGE_IHU, msglen);
     accumulate_byte(buf, ll ? 3 : 2);
@@ -1693,6 +1700,15 @@ buffer_ihu(struct buffered *buf, unsigned short rxcost,
         accumulate_int(buf, t1);
         accumulate_int(buf, t2);
     }
+    if(echo) {
+        struct anm *anm;
+        printf("add echo\n");
+        anm = find_anm(address, ifp);
+        accumulate_byte(buf, SUBTLV_ECHO);
+	accumulate_byte(buf, 6);
+        accumulate_int(buf, anm->last_ts);
+        accumulate_short(buf, anm->last_pc);
+    }
     end_message(buf, MESSAGE_IHU, msglen);
 }
 
@@ -1702,6 +1718,8 @@ send_ihu(struct neighbour *neigh, struct interface *ifp)
 {
     int rxcost, interval;
     int send_rtt_data;
+    int send_echo = 0;
+    struct anm *anm;
 
     if(neigh == NULL && ifp == NULL) {
         struct interface *ifp_aux;
@@ -1721,13 +1739,16 @@ send_ihu(struct neighbour *neigh, struct interface *ifp)
         return;
     }
 
-
     if(ifp && neigh->ifp != ifp)
         return;
 
     ifp = neigh->ifp;
     if(!if_up(ifp))
         return;
+
+    anm = find_anm(neigh->address, ifp);
+    if(anm != NULL)
+	send_echo = 1;
 
     rxcost = neighbour_rxcost(neigh);
     interval = (ifp->hello_interval * 3 + 9) / 10;
@@ -1746,8 +1767,8 @@ send_ihu(struct neighbour *neigh, struct interface *ifp)
         send_rtt_data = 0;
     }
 
-    buffer_ihu(&ifp->buf, rxcost, interval, neigh->address,
-               send_rtt_data, neigh->hello_send_us,
+    buffer_ihu(ifp, &ifp->buf, rxcost, interval, neigh->address,
+               send_rtt_data, send_echo, neigh->hello_send_us,
                time_us(neigh->hello_rtt_receive_time));
 
 }
