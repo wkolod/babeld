@@ -8,8 +8,8 @@
 
 #include "babeld.h"
 #include "interface.h"
-#include "hmactrailer.h"
 #include "neighbour.h"
+#include "hmactrailer.h"
 #include "kernel.h"
 #include "anm.h"
 #include "message.h"
@@ -177,8 +177,10 @@ check_tspc(const unsigned char *packet, int bodylen,
 	if(type == TSPC_TYPE) {
             unsigned int ts;
             unsigned short pc;
+	    nb_tspc ++;
             DO_NTOHL(ts, message + 2);
             DO_NTOHS(pc, message + 4);
+	    printf("TS:%u, PC: %hu.\n" ,ts, pc);
 	    if(compare_tspc(anm->last_ts, anm->last_pc, ts, pc) >= 0)
 		return 0;
             anm->last_ts = ts;
@@ -186,8 +188,13 @@ check_tspc(const unsigned char *packet, int bodylen,
         }
 	i += len + 2;
     }
-    if(nb_tspc > 1)
+    if(nb_tspc > 1){
+	printf("More than 1 TS/PC.\n");
 	return 0;
+    }
+    if(nb_tspc == 0)
+	printf("No TSPC.\n");
+    printf("Accept TSPC.\n");
     return 1;
 }
 
