@@ -945,6 +945,7 @@ flushbuf(struct buffered *buf)
     assert(buf->len <= buf->size);
 
     if(buf->len > 0) {
+	add_tspc(buf);
         debugf("  (flushing %d buffered bytes)\n", buf->len);
         DO_HTONS(packet_header + 2, buf->len);
         fill_rtt_message(buf);
@@ -970,7 +971,6 @@ flushbuf(struct buffered *buf)
     buf->have_prefix = 0;
     buf->timeout.tv_sec = 0;
     buf->timeout.tv_usec = 0;
-    add_tspc(buf);
 }
 
 static void
@@ -997,7 +997,7 @@ schedule_flush_now(struct buffered *buf)
 static void
 ensure_space(struct buffered *buf, int space)
 {
-    if(buf->size - (buf->len + MAX_HMAC_SPACE) < space){
+    if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < space){
         buf->buf += buf->len;
 	flushbuf(buf);
     }
@@ -1006,7 +1006,7 @@ ensure_space(struct buffered *buf, int space)
 static void
 start_message(struct buffered *buf, int type, int len)
 {
-    if(buf->size - (buf->len + MAX_HMAC_SPACE) < len + 2) {
+    if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < len + 2) {
 	flushbuf(buf);
     }
     buf->buf[buf->len++] = type;
@@ -1059,7 +1059,7 @@ add_tspc(struct buffered *buf)
   accumulate_int(buf, realtime.tv_sec);
   last_ts = realtime.tv_sec;
   last_pc++;
-  printf("adding ts/ps with ts: %u and pc: %hu \n", last_ts, last_pc);
+  debugf("adding ts/pc with ts: %u and pc: %hu \n", last_ts, last_pc);
   accumulate_short(buf, last_pc);
   end_message(buf, MESSAGE_TSPC, 6);
 }

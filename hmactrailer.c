@@ -33,45 +33,45 @@ compute_hmac(unsigned char *src, unsigned char *dst,
     int keylen;
 
     switch(hash_type) {
-        case 0:
-	  keylen = sizeof(key);
-	  memcpy(key_hash, key, keylen);
-	  if(keylen > SHA1_BLOCK_SIZE) {
-	      SHA1_Init(&key_ctx);
-	      SHA1_Update(&key_ctx, key, keylen);
-	      SHA1_Final(key_hash, &key_ctx);
-	      keylen = SHA_DIGEST_LENGTH;
-	  }
-	  for(i = 0; i < keylen; i++) {
+    case 0:
+	keylen = sizeof(key);
+	memcpy(key_hash, key, keylen);
+	if(keylen > SHA1_BLOCK_SIZE) {
+	    SHA1_Init(&key_ctx);
+	    SHA1_Update(&key_ctx, key, keylen);
+	    SHA1_Final(key_hash, &key_ctx);
+	    keylen = SHA_DIGEST_LENGTH;
+	}
+	for(i = 0; i < keylen; i++) {
 	    inner_key_pad[i] = key_hash[i]^0x36;
-            }
-            for(i = keylen; i < SHA1_BLOCK_SIZE; i++) {
-                inner_key_pad[i] = 0x36;
-            }
-            SHA1_Init(&inner_ctx);
-            SHA1_Update(&inner_ctx, inner_key_pad, SHA1_BLOCK_SIZE);
-            SHA1_Update(&inner_ctx, dst, 16);
-            SHA1_Update(&inner_ctx, src, 16);
-            SHA1_Update(&inner_ctx, packet_header, 4);
-            SHA1_Update(&inner_ctx, body, bodylen);
-            SHA1_Final(inner_hash, &inner_ctx);
+	}
+	for(i = keylen; i < SHA1_BLOCK_SIZE; i++) {
+	    inner_key_pad[i] = 0x36;
+	}
+	SHA1_Init(&inner_ctx);
+	SHA1_Update(&inner_ctx, inner_key_pad, SHA1_BLOCK_SIZE);
+	SHA1_Update(&inner_ctx, dst, 16);
+	SHA1_Update(&inner_ctx, src, 16);
+	SHA1_Update(&inner_ctx, packet_header, 4);
+	SHA1_Update(&inner_ctx, body, bodylen);
+	SHA1_Final(inner_hash, &inner_ctx);
 
-            for(i = 0; i < keylen; i++) {
-	      outer_key_pad[i] = key_hash[i]^0x5c;
-            }
-            for(i = keylen; i < SHA1_BLOCK_SIZE; i++) {
-                outer_key_pad[i] = 0x5c;
-            }
-            SHA1_Init(&outer_ctx);
-            SHA1_Update(&outer_ctx, outer_key_pad, SHA1_BLOCK_SIZE);
-            SHA1_Update(&outer_ctx, inner_hash, SHA_DIGEST_LENGTH);
-            SHA1_Final(hmac, &outer_ctx);
-            return SHA_DIGEST_LENGTH;
-        case 1:
-            RIPEMD160(body, bodylen, hmac);
-            return RIPEMD160_DIGEST_LENGTH;
-        default:
-            return -1;
+	for(i = 0; i < keylen; i++) {
+	    outer_key_pad[i] = key_hash[i]^0x5c;
+	}
+	for(i = keylen; i < SHA1_BLOCK_SIZE; i++) {
+	    outer_key_pad[i] = 0x5c;
+	}
+	SHA1_Init(&outer_ctx);
+	SHA1_Update(&outer_ctx, outer_key_pad, SHA1_BLOCK_SIZE);
+	SHA1_Update(&outer_ctx, inner_hash, SHA_DIGEST_LENGTH);
+	SHA1_Final(hmac, &outer_ctx);
+	return SHA_DIGEST_LENGTH;
+    case 1:
+	RIPEMD160(body, bodylen, hmac);
+	return RIPEMD160_DIGEST_LENGTH;
+    default:
+	return -1;
     }
 }
 
@@ -104,7 +104,7 @@ add_hmac(unsigned char *packet_header, char *buf, int buf_len,
 
 
 static int
-hmac_compare(unsigned char *src, unsigned char *dst,
+compare_hmac(unsigned char *src, unsigned char *dst,
 	     const unsigned char *packet, int bodylen,
 	     const unsigned char *hmac, int hmaclen)
 {
@@ -116,16 +116,16 @@ hmac_compare(unsigned char *src, unsigned char *dst,
 				    packet + 4, bodylen, 0);
     printf("hmac_compare: %d.", hmaclen);
     for(j = 0; j < hmaclen; j++) {
-      printf("%02x", hmac[j]);
+	printf("%02x", hmac[j]);
     }
     printf(" %d.", true_hmaclen);
     for(j = 0; j < true_hmaclen; j++) {
-      printf("%02x", true_hmac[j]);
+	printf("%02x", true_hmac[j]);
     }
     printf("\n");
     if(true_hmaclen != hmaclen) {
-       fprintf(stderr, "Length inconsistency of two hmacs.\n");
-		return -1;
+	fprintf(stderr, "Length inconsistency of two hmacs.\n");
+	return -1;
     }
     if(memcmp(true_hmac, hmac, hmaclen) == 0)
 	return 1;
@@ -179,15 +179,24 @@ check_tspc(const unsigned char *packet, int bodylen,
             unsigned short pc;
             DO_NTOHL(ts, message + 2);
             DO_NTOHS(pc, message + 4);
+	    printf("last ts: %u, last pc: %hu \n", anm->last_ts, anm->last_pc);
+	    printf("ts: %u, pc: %hu \n", ts, pc);
 	    if(compare_tspc(anm->last_ts, anm->last_pc, ts, pc) >= 0)
 		return 0;
             anm->last_ts = ts;
             anm->last_pc = pc;
+	    nb_tspc++;
         }
 	i += len + 2;
     }
-    if(nb_tspc > 1)
+    if(nb_tspc > 1) {
+	printf("More than one TS/PC.\n");
 	return 0;
+    }
+    if(nb_tspc == 1)
+	printf("One TS/PC correct.\n");
+    else
+	printf("No TS/PC.\n");
     return 1;
 }
 
@@ -207,7 +216,7 @@ check_hmac(const unsigned char *packet, int packetlen, int bodylen,
 	        fprintf(stderr, "Received truncated hmac.\n");
 		return -1;
 	    }
-	    if(hmac_compare(addr_src, addr_dst, packet, bodylen,
+	    if(compare_hmac(addr_src, addr_dst, packet, bodylen,
 			    packet + i + 2 , hmaclen)){
 		printf("accept hmac\n");
 		return 1;

@@ -659,6 +659,53 @@ parse_ifconf(int c, gnc_t gnc, void *closure,
     return -2;
 }
 
+static int
+parse_key(int c, gnc_t gnc, void *closure)
+{
+    char *token, *key;
+    int key_id, auth_type;
+
+    c = skip_whitespace(c, gnc, closure);
+    if(c < 0 || c == '\n' || c == '#') {
+	goto error;
+    }
+
+    c = getint(c, &key_id, gnc, closure);
+    if(c < -1) {
+	goto error;
+    }
+
+    c = getstring(c, &token, gnc, closure);
+    if(c < -1 || token == NULL)
+	goto error;
+
+    if(strcmp(token, "none") == 0) {
+	auth_type = AUTH_TYPE_NONE;
+	/* remove key */
+    } else if(strcmp(token, "plaintext") == 0) {
+	auth_type = AUTH_TYPE_PLAINTEXT;
+	c = getstring(c, &key, gnc, closure);
+	if(c < -1 || key == NULL)
+	    goto error;
+	/* add key */
+    } else if(strcmp(token, "sha1") == 0) {
+	auth_type = AUTH_TYPE_SHA1;
+	c = getstring(c, &key, gnc, closure);
+	if(c < -1 || key == NULL)
+	    goto error;
+	/* add key */
+    } else {
+	goto error;
+    }
+
+    free(token);
+    return c;
+
+ error:
+    free(token);
+    return -2;
+}
+
 static void
 add_filter(struct filter *filter, struct filter **filters)
 {
@@ -1063,6 +1110,10 @@ parse_config_line(int c, gnc_t gnc, void *closure,
         if(c < -1 || !action_return)
             goto fail;
         reopen_logfile();
+    } else if(strcmp(token, "hmac") == 0) {
+	c = parse_key(c, gnc, closure);
+	if(c < -1)
+	    goto fail;
     } else {
         c = parse_option(c, gnc, closure, token);
         if(c < -1)
