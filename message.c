@@ -1064,10 +1064,10 @@ add_tspc(struct buffered *buf)
     unsigned short last_pc;
     start_message(buf, MESSAGE_TSPC, 6);
     clock_gettime(CLOCK_REALTIME, &realtime);
-    memcpy(last_tspc, &realtime.tv_sec, 4);
-    memcpy(&last_pc, last_tspc + 4, 2);
+    DO_HTONL(last_tspc, realtime.tv_sec);
+    DO_NTOHS(last_pc, last_tspc + 4);
     last_pc++;
-    memcpy(last_tspc + 4, &last_pc, 2);
+    DO_HTONS(last_tspc + 4, last_pc);
     accumulate_bytes(buf, last_tspc, 6);
     end_message(buf, MESSAGE_TSPC, 6);
 }

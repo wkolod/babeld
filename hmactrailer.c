@@ -122,21 +122,6 @@ compare_hmac(unsigned char *src, unsigned char *dst,
     return 0;
 }
 
-static int
-compare_tspc(unsigned char *last_tspc, unsigned char *tspc)
-{
-    if(memcmp(last_tspc, tspc, 4) < 0)
-        return -1;
-    else if(memcmp(last_tspc, tspc, 4) > 0)
-        return +1;
-    else if(memcmp(last_tspc + 4, tspc + 4, 2) < 0)
-        return -1;
-    else if(memcmp(last_tspc + 4, tspc + 4, 2) > 0)
-        return +1;
-    else
-        return 0;
-}
-
 int
 check_tspc(const unsigned char *packet, int bodylen,
 	   unsigned char *from, struct interface *ifp)
@@ -168,7 +153,7 @@ check_tspc(const unsigned char *packet, int bodylen,
 	if(type == TSPC_TYPE) {
             unsigned char tspc[6];
 	    memcpy(tspc, message + 2, 6);
-	    if(compare_tspc(anm->last_tspc, tspc) >= 0)
+	    if(memcmp(anm->last_tspc, tspc, 6) >= 0)
 		return 0;
 	    memcpy(anm->last_tspc, tspc, 6);
 	    nb_tspc++;
