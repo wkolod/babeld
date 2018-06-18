@@ -63,27 +63,30 @@ compute_hmac(unsigned char *src, unsigned char *dst,
 	    outer_key_pad[i] = 0x5c;
 	}
 	SHA1_Init(&outer_ctx);
-	SHA1_Update(&outer_ctx, outer_key_pad, SHA1_BLOCK_SIZE);
-	SHA1_Update(&outer_ctx, inner_hash, SHA_DIGEST_LENGTH);
-	SHA1_Final(hmac, &outer_ctx);
-	return SHA_DIGEST_LENGTH;
+        SHA1_Update(&outer_ctx, outer_key_pad, SHA1_BLOCK_SIZE);
+        SHA1_Update(&outer_ctx, inner_hash, SHA_DIGEST_LENGTH);
+        SHA1_Final(hmac, &outer_ctx);
+        return SHA_DIGEST_LENGTH;
     case 1:
-	RIPEMD160(body, bodylen, hmac);
-	return RIPEMD160_DIGEST_LENGTH;
+        RIPEMD160(body, bodylen, hmac);
+        return RIPEMD160_DIGEST_LENGTH;
     default:
-	return -1;
+        return -1;
     }
 }
 
 int
-add_hmac(unsigned char *packet_header, char *buf, int buf_len,
-	 int nb_hmac, unsigned char *addr_src, unsigned char *addr_dst)
+add_hmac(unsigned char *packet_header, struct buffered *message, int nb_hmac)
 {
-    int i = buf_len;
     int hmaclen;
     int hmac_space = 0;
+    int buf_len = message->len;
+    char *buf = message->buf;
+    unsigned char *addr_src = message->ll;
+    unsigned char *addr_dst = message->sin6.sin6_addr.s6_addr;
+    int i = buf_len;
 
-    printf("add_hmac %s -> %s\n",
+    debugf("add_hmac %s -> %s\n",
 	   format_address(addr_src), format_address(addr_dst));
 
     while (nb_hmac > 0){
@@ -108,21 +111,12 @@ compare_hmac(unsigned char *src, unsigned char *dst,
 	     const unsigned char *packet, int bodylen,
 	     const unsigned char *hmac, int hmaclen)
 {
-    int j;
     unsigned char true_hmac[DIGEST_LEN];
     unsigned char packet_header[4] = {packet[0], packet[1], packet[2],
 				      packet[3]};
     int true_hmaclen = compute_hmac(src, dst, packet_header, true_hmac,
 				    packet + 4, bodylen, 0);
-    printf("hmac_compare: %d.", hmaclen);
-    for(j = 0; j < hmaclen; j++) {
-	printf("%02x", hmac[j]);
-    }
-    printf(" %d.", true_hmaclen);
-    for(j = 0; j < true_hmaclen; j++) {
-	printf("%02x", true_hmac[j]);
-    }
-    printf("\n");
+
     if(true_hmaclen != hmaclen) {
 	fprintf(stderr, "Length inconsistency of two hmacs.\n");
 	return -1;
@@ -179,8 +173,8 @@ check_tspc(const unsigned char *packet, int bodylen,
             unsigned short pc;
             DO_NTOHL(ts, message + 2);
             DO_NTOHS(pc, message + 6);
-	    printf("Last TS: %u, last PC: %hu \n", anm->last_ts, anm->last_pc);
-	    printf("TS: %u, PC: %hu \n", ts, pc);
+	    debugf("Last TS: %u, last PC: %hu \n", anm->last_ts, anm->last_pc);
+	    debugf("TS: %u, PC: %hu \n", ts, pc);
 	    if(compare_tspc(anm->last_ts, anm->last_pc, ts, pc) >= 0)
 		return 0;
             anm->last_ts = ts;
@@ -190,10 +184,14 @@ check_tspc(const unsigned char *packet, int bodylen,
 	i += len + 2;
     }
     if(nb_tspc != 1) {
-	printf("Refuse TS/PC.\n");
+	fprintf(stderr, "Refuse TS/PC.\n");
 	return 0;
     }
-    printf("Accept TS/PC.\n");
+    return 1;
+}
+
+int
+check_echo(){
     return 1;
 }
 
@@ -204,7 +202,7 @@ check_hmac(const unsigned char *packet, int packetlen, int bodylen,
     int i = bodylen + 4;
     int hmaclen;
 
-    printf("check_hmac %s -> %s\n",
+    debugf("check_hmac %s -> %s\n",
 	   format_address(addr_src), format_address(addr_dst));
     while(i < packetlen){
         hmaclen = packet[i+1];
@@ -215,11 +213,10 @@ check_hmac(const unsigned char *packet, int packetlen, int bodylen,
 	    }
 	    if(compare_hmac(addr_src, addr_dst, packet, bodylen,
 			    packet + i + 2 , hmaclen)){
-		printf("accept hmac\n");
-		return 1;
-	    }
-	}
-	i += hmaclen + 2;
+                return 1;
+            }
+        }
+        i += hmaclen + 2;
     }
     return 0;
 }

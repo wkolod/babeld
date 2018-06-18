@@ -268,12 +268,18 @@ parse_ihu_subtlv(const unsigned char *a, int alen,
                 /* But don't break. */
             }
         } else if(type == SUBTLV_ECHO){
-	    unsigned int ts;
-	    unsigned short pc;
-	    DO_NTOHL(ts, a + i + 2);
-	    DO_NTOHS(pc, a + i + 6);
-	    printf("(echo)TS:%u, PC: %hu.\n" ,ts, pc);
-	} else {
+            unsigned int ts;
+            unsigned short pc;
+            DO_NTOHL(ts, a + i + 2);
+            DO_NTOHS(pc, a + i + 6);
+            debugf("(echo)TS:%u, PC: %hu.\n" ,ts, pc);
+	    if(check_echo()){
+
+	    } else{
+                fprintf(stderr,
+                        "Received incorrect TSPC-echo sub-TLV on IHU.\n");
+	    }
+        } else {
             debugf("Received unknown%s IHU sub-TLV %d.\n",
                    (type & 0x80) != 0 ? " mandatory" : "", type);
             if((type & 0x80) != 0)
@@ -334,7 +340,7 @@ network_address(int ae, const unsigned char *a, unsigned int len,
 void
 parse_packet(const unsigned char *from, struct interface *ifp,
              const unsigned char *packet, int packetlen, int *is_unicast,
-	     unsigned char *send_addr)
+             unsigned char *send_addr)
 {
     int i;
     const unsigned char *message;
@@ -388,15 +394,15 @@ parse_packet(const unsigned char *from, struct interface *ifp,
     }
 
     if(is_unicast){
-	if(check_hmac(packet, packetlen, bodylen, neigh->address,
-		      *neigh->ifp->ll) == 0){
-	    fprintf(stderr, "Received wrong hmac.\n");
-	    return;
-	}
+        if(check_hmac(packet, packetlen, bodylen, neigh->address,
+                      *neigh->ifp->ll) == 0){
+            fprintf(stderr, "Received wrong hmac.\n");
+            return;
+        }
     } else {
-	if(send_addr == 0){
-	    fprintf(stderr, "Error multicast address.\n");
-	}
+        if(send_addr == 0){
+            fprintf(stderr, "Error multicast address.\n");
+        }
         if(check_hmac(packet, packetlen, bodylen, neigh->address,
                       send_addr) == 0){
             fprintf(stderr, "Received wrong hmac.\n");
@@ -867,8 +873,8 @@ parse_packet(const unsigned char *from, struct interface *ifp,
             handle_request(neigh, prefix, plen, src_prefix, src_plen,
                            hopc, seqno, router_id);
         } else if(type == MESSAGE_TSPC) {
-	    /* We're dealing with the TS/PC message elsewhere. */
-	} else {
+            /* We're dealing with the TS/PC message elsewhere. */
+        } else {
             debugf("Received unknown packet type %d from %s on %s.\n",
                    type, format_address(from), ifp->name);
         }
@@ -953,16 +959,15 @@ flushbuf(struct buffered *buf)
     assert(buf->len <= buf->size);
 
     if(buf->len > 0) {
-	add_tspc(buf);
+        add_tspc(buf);
         debugf("  (flushing %d buffered bytes)\n", buf->len);
         DO_HTONS(packet_header + 2, buf->len);
         fill_rtt_message(buf);
-	hmac_space = add_hmac(packet_header, buf->buf, buf->len, 1, buf->ll,
-			      buf->sin6.sin6_addr.s6_addr);
-	if(hmac_space == -1) {
-	    fprintf(stderr, "Add_hmac fail. \n");
-	    return;
-	}
+        hmac_space = add_hmac(packet_header, buf, 1);
+        if(hmac_space == -1) {
+            fprintf(stderr, "Add_hmac fail. \n");
+            return;
+        }
         rc = babel_send(protocol_socket,
                         packet_header, sizeof(packet_header),
                         buf->buf, (buf->len + hmac_space),
@@ -1007,7 +1012,7 @@ ensure_space(struct buffered *buf, int space)
 {
     if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < space){
         buf->buf += buf->len;
-	flushbuf(buf);
+        flushbuf(buf);
     }
 }
 
@@ -1015,7 +1020,7 @@ static void
 start_message(struct buffered *buf, int type, int len)
 {
     if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < len + 2) {
-	flushbuf(buf);
+        flushbuf(buf);
     }
     buf->buf[buf->len++] = type;
     buf->buf[buf->len++] = len;
@@ -1067,7 +1072,7 @@ add_tspc(struct buffered *buf)
     accumulate_int(buf, realtime.tv_sec);
     last_ts = realtime.tv_sec;
     last_pc++;
-    printf("adding ts/ps with ts: %u and pc: %hu \n", last_ts, last_pc);
+    debugf("adding ts/ps with ts: %u and pc: %hu \n", last_ts, last_pc);
     accumulate_short(buf, last_pc);
     end_message(buf, MESSAGE_TSPC, 6);
 }
@@ -1703,7 +1708,7 @@ buffer_ihu(struct interface *ifp, struct buffered *buf, unsigned short rxcost,
     }
     if(echo) {
         struct anm *anm;
-        printf("add echo\n");
+        debugf("add echo\n");
         anm = find_anm(address, ifp);
         accumulate_byte(buf, SUBTLV_ECHO);
 	accumulate_byte(buf, 6);
