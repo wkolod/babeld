@@ -83,7 +83,7 @@ add_hmac(unsigned char *packet_header, char *buf, int buf_len,
     int hmaclen;
     int hmac_space = 0;
 
-    printf("add_hmac %s -> %s\n",
+    debugf("add_hmac %s -> %s\n",
 	   format_address(addr_src), format_address(addr_dst));
 
     while (nb_hmac > 0){
@@ -108,21 +108,11 @@ compare_hmac(unsigned char *src, unsigned char *dst,
 	     const unsigned char *packet, int bodylen,
 	     const unsigned char *hmac, int hmaclen)
 {
-    int j;
     unsigned char true_hmac[DIGEST_LEN];
     unsigned char packet_header[4] = {packet[0], packet[1], packet[2],
 				      packet[3]};
     int true_hmaclen = compute_hmac(src, dst, packet_header, true_hmac,
 				    packet + 4, bodylen, 0);
-    printf("hmac_compare: %d.", hmaclen);
-    for(j = 0; j < hmaclen; j++) {
-	printf("%02x", hmac[j]);
-    }
-    printf(" %d.", true_hmaclen);
-    for(j = 0; j < true_hmaclen; j++) {
-	printf("%02x", true_hmac[j]);
-    }
-    printf("\n");
     if(true_hmaclen != hmaclen) {
 	fprintf(stderr, "Length inconsistency of two hmacs.\n");
 	return -1;
@@ -133,16 +123,15 @@ compare_hmac(unsigned char *src, unsigned char *dst,
 }
 
 static int
-compare_tspc(unsigned int ts1, unsigned short pc1,
-             unsigned int ts2, unsigned short pc2)
+compare_tspc(unsigned char *last_tspc, unsigned char *tspc)
 {
-    if(ts1 < ts2)
+    if(memcmp(last_tspc, tspc, 4) < 0)
         return -1;
-    else if(ts1 > ts2)
+    else if(memcmp(last_tspc, tspc, 4) > 0)
         return +1;
-    else if(pc1 < pc2)
+    else if(memcmp(last_tspc + 4, tspc + 4, 2) < 0)
         return -1;
-    else if(pc1 > pc2)
+    else if(memcmp(last_tspc + 4, tspc + 4, 2) > 0)
         return +1;
     else
         return 0;
@@ -158,7 +147,9 @@ check_tspc(const unsigned char *packet, int bodylen,
     struct anm *anm;
     anm = find_anm(from, ifp);
     if(anm == NULL) {
-	anm = add_anm(from, ifp, 0, 0);
+	unsigned char tspc_init[6];
+	memset(tspc_init, 0, 6);
+	anm = add_anm(from, ifp, tspc_init);
         if(anm == NULL) {
 	    fprintf(stderr, "Couldn't create ANM.\n");
             return -1;
@@ -175,25 +166,19 @@ check_tspc(const unsigned char *packet, int bodylen,
 	}
 	len = message[1];
 	if(type == TSPC_TYPE) {
-            unsigned int ts;
-            unsigned short pc;
-            DO_NTOHL(ts, message + 2);
-            DO_NTOHS(pc, message + 6);
-	    printf("Last TS: %u, last PC: %hu \n", anm->last_ts, anm->last_pc);
-	    printf("TS: %u, PC: %hu \n", ts, pc);
-	    if(compare_tspc(anm->last_ts, anm->last_pc, ts, pc) >= 0)
+            unsigned char tspc[6];
+	    memcpy(tspc, message + 2, 6);
+	    if(compare_tspc(anm->last_tspc, tspc) >= 0)
 		return 0;
-            anm->last_ts = ts;
-            anm->last_pc = pc;
+	    memcpy(anm->last_tspc, tspc, 6);
 	    nb_tspc++;
         }
 	i += len + 2;
     }
     if(nb_tspc != 1) {
-	printf("Refuse TS/PC.\n");
+	fprintf(stderr, "Refuse TS/PC.\n");
 	return 0;
     }
-    printf("Accept TS/PC.\n");
     return 1;
 }
 
@@ -204,18 +189,17 @@ check_hmac(const unsigned char *packet, int packetlen, int bodylen,
     int i = bodylen + 4;
     int hmaclen;
 
-    printf("check_hmac %s -> %s\n",
+    debugf("check_hmac %s -> %s\n",
 	   format_address(addr_src), format_address(addr_dst));
-    while(i < packetlen){
+    while(i < packetlen) {
         hmaclen = packet[i+1];
-        if(packet[i] == HMAC_TYPE){
-	    if(hmaclen + i > packetlen){
+        if(packet[i] == HMAC_TYPE) {
+	    if(hmaclen + i > packetlen) {
 	        fprintf(stderr, "Received truncated hmac.\n");
 		return -1;
 	    }
 	    if(compare_hmac(addr_src, addr_dst, packet, bodylen,
-			    packet + i + 2 , hmaclen)){
-		printf("accept hmac\n");
+			    packet + i + 2 , hmaclen)) {
 		return 1;
 	    }
 	}

@@ -32,13 +32,11 @@ find_anm(const unsigned char *from, const struct interface *ifp)
 }
 
 struct anm *
-add_anm(unsigned char *from, struct interface *ifp, unsigned int last_ts,
-	unsigned short last_pc)
+add_anm(unsigned char *from, struct interface *ifp, unsigned char *last_tspc)
 {
     struct anm *anm = find_anm(from, ifp);
     if(anm) {
-        anm->last_ts = last_ts;
-        anm->last_pc = last_pc;
+        memcpy(anm->last_tspc, last_tspc, 6);
         return anm;
     }
 
@@ -54,8 +52,7 @@ add_anm(unsigned char *from, struct interface *ifp, unsigned int last_ts,
 
     memcpy(anms[numanms].from, from, 16);
     anms[numanms].ifp = ifp;
-    anms[numanms].last_ts = last_ts;
-    anms[numanms].last_pc = last_pc;
+    memcpy(anms[numanms].last_tspc, last_tspc, 6);
     numanms++;
     return &anms[numanms - 1];
 }

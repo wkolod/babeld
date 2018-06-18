@@ -51,8 +51,7 @@ int split_horizon = 1;
 unsigned short myseqno = 0;
 struct timeval seqno_time = {0, 0};
 
-unsigned int last_ts = 0;
-unsigned short last_pc = 0;
+unsigned char last_tspc[6] = {0};
 
 extern const unsigned char v4prefix[16];
 
@@ -404,7 +403,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
         }
     }
 
-    if(check_tspc(packet, bodylen, (unsigned char *)neigh->address, ifp) == 0){
+    if(check_tspc(packet, bodylen, neigh->address, ifp) == 0){
         fprintf(stderr, "Received wrong TS/PC.\n");
         return;
     }
@@ -867,7 +866,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
             handle_request(neigh, prefix, plen, src_prefix, src_plen,
                            hopc, seqno, router_id);
         } else if(type == MESSAGE_TSPC) {
-	    /* We're dealing with the TS/PC message elsewhere. */
+	    /* We're dealing with the TS/PC message in check_tspc(). */
 	} else {
             debugf("Received unknown packet type %d from %s on %s.\n",
                    type, format_address(from), ifp->name);
@@ -1062,13 +1061,14 @@ void
 add_tspc(struct buffered *buf)
 {
     struct timespec realtime;
+    unsigned short last_pc;
     start_message(buf, MESSAGE_TSPC, 6);
     clock_gettime(CLOCK_REALTIME, &realtime);
-    accumulate_int(buf, realtime.tv_sec);
-    last_ts = realtime.tv_sec;
+    memcpy(last_tspc, &realtime.tv_sec, 4);
+    memcpy(&last_pc, last_tspc + 4, 2);
     last_pc++;
-    printf("adding ts/ps with ts: %u and pc: %hu \n", last_ts, last_pc);
-    accumulate_short(buf, last_pc);
+    memcpy(last_tspc + 4, &last_pc, 2);
+    accumulate_bytes(buf, last_tspc, 6);
     end_message(buf, MESSAGE_TSPC, 6);
 }
 
@@ -1707,8 +1707,7 @@ buffer_ihu(struct interface *ifp, struct buffered *buf, unsigned short rxcost,
         anm = find_anm(address, ifp);
         accumulate_byte(buf, SUBTLV_ECHO);
 	accumulate_byte(buf, 6);
-        accumulate_int(buf, anm->last_ts);
-        accumulate_short(buf, anm->last_pc);
+        accumulate_bytes(buf, anm->last_tspc, 6);
     }
     end_message(buf, MESSAGE_IHU, msglen);
 }
