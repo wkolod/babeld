@@ -51,6 +51,7 @@ int split_horizon = 1;
 unsigned short myseqno = 0;
 struct timeval seqno_time = {0, 0};
 
+unsigned int first_ts = 0;
 unsigned int last_ts = 0;
 unsigned short last_pc = 0;
 
@@ -230,12 +231,14 @@ parse_hello_subtlv(const unsigned char *a, int alen,
 
 static int
 parse_ihu_subtlv(const unsigned char *a, int alen,
+                 struct neighbour *neigh,
                  unsigned int *timestamp1_return,
                  unsigned int *timestamp2_return,
                  int *have_timestamp_return)
 {
     int type, len, i = 0;
     int have_timestamp = 0;
+    int have_echo = 0;
     unsigned int timestamp1, timestamp2;
 
     while(i < alen) {
@@ -270,15 +273,19 @@ parse_ihu_subtlv(const unsigned char *a, int alen,
         } else if(type == SUBTLV_ECHO){
             unsigned int ts;
             unsigned short pc;
+            gettime(&now);
+            have_echo = 1;
             DO_NTOHL(ts, a + i + 2);
             DO_NTOHS(pc, a + i + 6);
             debugf("(echo)TS:%u, PC: %hu.\n" ,ts, pc);
-	    if(check_echo()){
-
-	    } else{
+	    if(check_echo(ts, last_ts)){
+		neigh->echo_receive_time = now;
+	    } else if(check_echo_age(&neigh->echo_receive_time)){
+		/* Nothing to do. */
+	    } else {
                 fprintf(stderr,
                         "Received incorrect TSPC-echo sub-TLV on IHU.\n");
-	    }
+            }
         } else {
             debugf("Received unknown%s IHU sub-TLV %d.\n",
                    (type & 0x80) != 0 ? " mandatory" : "", type);
@@ -287,6 +294,11 @@ parse_ihu_subtlv(const unsigned char *a, int alen,
         }
 
         i += len + 2;
+    }
+    if(have_echo){
+	if(!check_echo_age(&neigh->echo_receive_time)){
+	    fprintf(stderr, "Echo has expired.\n");
+	}
     }
     if(have_timestamp && timestamp1_return && timestamp2_return) {
         *timestamp1_return = timestamp1;
@@ -502,7 +514,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
                    format_address(address));
             if(message[2] == 0 || interface_ll_address(ifp, address)) {
                 int changed;
-                rc = parse_ihu_subtlv(message + 8 + rc, len - 6 - rc,
+                rc = parse_ihu_subtlv(message + 8 + rc, len - 6 - rc, neigh,
                                       &hello_send_us, &hello_rtt_receive_time,
                                       NULL);
                 if(rc < 0)

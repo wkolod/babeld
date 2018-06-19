@@ -104,6 +104,7 @@ find_neighbour(const unsigned char *address, struct interface *ifp)
     neigh->ihu_time = now;
     neigh->hello.time = neigh->uhello.time = zero;
     neigh->hello_rtt_receive_time = zero;
+    neigh->echo_receive_time = zero;
     neigh->rtt_time = zero;
     neigh->ifp = ifp;
     neigh->buf.buf = buf;

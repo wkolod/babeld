@@ -191,8 +191,35 @@ check_tspc(const unsigned char *packet, int bodylen,
 }
 
 int
-check_echo(){
-    return 1;
+check_echo_age(struct timeval *last_echo)
+{
+    struct timeval echo_deadline = {128, 0};
+
+    if(echo_deadline.tv_sec < last_echo->tv_sec)
+        return 0;
+    else if(echo_deadline.tv_sec > last_echo->tv_sec)
+        return 1;
+    else if(echo_deadline.tv_usec < last_echo->tv_usec)
+        return 0;
+    else
+        return 1;
+}
+
+int
+check_echo(unsigned int ts, unsigned int last_ts)
+{
+    unsigned int first = 0;
+    unsigned int last = 0;
+    memcpy(&last, &last_ts, 4);
+    memcpy(&first, &last_ts, 4);
+    first -= 30;
+    if(first < 0)
+	first = 0;
+    if(ts >= first && ts <= last){
+	return 1;
+    }
+    fprintf(stderr, "Invalid echo.\n");
+    return 0;
 }
 
 int
