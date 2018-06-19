@@ -63,25 +63,28 @@ compute_hmac(unsigned char *src, unsigned char *dst,
 	    outer_key_pad[i] = 0x5c;
 	}
 	SHA1_Init(&outer_ctx);
-	SHA1_Update(&outer_ctx, outer_key_pad, SHA1_BLOCK_SIZE);
-	SHA1_Update(&outer_ctx, inner_hash, SHA_DIGEST_LENGTH);
-	SHA1_Final(hmac, &outer_ctx);
-	return SHA_DIGEST_LENGTH;
+        SHA1_Update(&outer_ctx, outer_key_pad, SHA1_BLOCK_SIZE);
+        SHA1_Update(&outer_ctx, inner_hash, SHA_DIGEST_LENGTH);
+        SHA1_Final(hmac, &outer_ctx);
+        return SHA_DIGEST_LENGTH;
     case 1:
-	RIPEMD160(body, bodylen, hmac);
-	return RIPEMD160_DIGEST_LENGTH;
+        RIPEMD160(body, bodylen, hmac);
+        return RIPEMD160_DIGEST_LENGTH;
     default:
-	return -1;
+        return -1;
     }
 }
 
 int
-add_hmac(unsigned char *packet_header, char *buf, int buf_len,
-	 int nb_hmac, unsigned char *addr_src, unsigned char *addr_dst)
+add_hmac(unsigned char *packet_header, struct buffered *message, int nb_hmac)
 {
-    int i = buf_len;
     int hmaclen;
     int hmac_space = 0;
+    int buf_len = message->len;
+    char *buf = message->buf;
+    unsigned char *addr_src = message->ll;
+    unsigned char *addr_dst = message->sin6.sin6_addr.s6_addr;
+    int i = buf_len;
 
     debugf("add_hmac %s -> %s\n",
 	   format_address(addr_src), format_address(addr_dst));
@@ -113,6 +116,7 @@ compare_hmac(unsigned char *src, unsigned char *dst,
 				      packet[3]};
     int true_hmaclen = compute_hmac(src, dst, packet_header, true_hmac,
 				    packet + 4, bodylen, 0);
+
     if(true_hmaclen != hmaclen) {
 	fprintf(stderr, "Length inconsistency of two hmacs.\n");
 	return -1;
@@ -165,6 +169,38 @@ check_tspc(const unsigned char *packet, int bodylen,
 	return 0;
     }
     return 1;
+}
+
+int
+check_echo_age(struct timeval *last_echo)
+{
+    struct timeval echo_deadline = {128, 0};
+
+    if(echo_deadline.tv_sec < last_echo->tv_sec)
+        return 0;
+    else if(echo_deadline.tv_sec > last_echo->tv_sec)
+        return 1;
+    else if(echo_deadline.tv_usec < last_echo->tv_usec)
+        return 0;
+    else
+        return 1;
+}
+
+int
+check_echo(unsigned int ts, unsigned int last_ts)
+{
+    unsigned int first = 0;
+    unsigned int last = 0;
+    memcpy(&last, &last_ts, 4);
+    memcpy(&first, &last_ts, 4);
+    first -= 30;
+    if(first < 0)
+	first = 0;
+    if(ts >= first && ts <= last){
+	return 1;
+    }
+    fprintf(stderr, "Invalid echo.\n");
+    return 0;
 }
 
 int

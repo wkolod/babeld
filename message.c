@@ -52,6 +52,9 @@ unsigned short myseqno = 0;
 struct timeval seqno_time = {0, 0};
 
 unsigned char last_tspc[6] = {0};
+unsigned int first_ts = 0;
+unsigned short last_pc = 0;
+unsigned int last_ts = 0;
 
 extern const unsigned char v4prefix[16];
 
@@ -229,12 +232,14 @@ parse_hello_subtlv(const unsigned char *a, int alen,
 
 static int
 parse_ihu_subtlv(const unsigned char *a, int alen,
+                 struct neighbour *neigh,
                  unsigned int *timestamp1_return,
                  unsigned int *timestamp2_return,
                  int *have_timestamp_return)
 {
     int type, len, i = 0;
     int have_timestamp = 0;
+    int have_echo = 0;
     unsigned int timestamp1, timestamp2;
 
     while(i < alen) {
@@ -267,12 +272,22 @@ parse_ihu_subtlv(const unsigned char *a, int alen,
                 /* But don't break. */
             }
         } else if(type == SUBTLV_ECHO){
-	    unsigned int ts;
-	    unsigned short pc;
-	    DO_NTOHL(ts, a + i + 2);
-	    DO_NTOHS(pc, a + i + 6);
-	    printf("(echo)TS:%u, PC: %hu.\n" ,ts, pc);
-	} else {
+            unsigned int ts;
+            unsigned short pc;
+            gettime(&now);
+            have_echo = 1;
+            DO_NTOHL(ts, a + i + 2);
+            DO_NTOHS(pc, a + i + 6);
+            debugf("(echo)TS:%u, PC: %hu.\n" ,ts, pc);
+	    if(check_echo(ts, last_ts)){
+		neigh->echo_receive_time = now;
+	    } else if(check_echo_age(&neigh->echo_receive_time)){
+		/* Nothing to do. */
+	    } else {
+                fprintf(stderr,
+                        "Received incorrect TSPC-echo sub-TLV on IHU.\n");
+            }
+        } else {
             debugf("Received unknown%s IHU sub-TLV %d.\n",
                    (type & 0x80) != 0 ? " mandatory" : "", type);
             if((type & 0x80) != 0)
@@ -280,6 +295,11 @@ parse_ihu_subtlv(const unsigned char *a, int alen,
         }
 
         i += len + 2;
+    }
+    if(have_echo){
+	if(!check_echo_age(&neigh->echo_receive_time)){
+	    fprintf(stderr, "Echo has expired.\n");
+	}
     }
     if(have_timestamp && timestamp1_return && timestamp2_return) {
         *timestamp1_return = timestamp1;
@@ -333,7 +353,7 @@ network_address(int ae, const unsigned char *a, unsigned int len,
 void
 parse_packet(const unsigned char *from, struct interface *ifp,
              const unsigned char *packet, int packetlen, int *is_unicast,
-	     unsigned char *send_addr)
+             unsigned char *send_addr)
 {
     int i;
     const unsigned char *message;
@@ -387,15 +407,15 @@ parse_packet(const unsigned char *from, struct interface *ifp,
     }
 
     if(is_unicast){
-	if(check_hmac(packet, packetlen, bodylen, neigh->address,
-		      *neigh->ifp->ll) == 0){
-	    fprintf(stderr, "Received wrong hmac.\n");
-	    return;
-	}
+        if(check_hmac(packet, packetlen, bodylen, neigh->address,
+                      *neigh->ifp->ll) == 0){
+            fprintf(stderr, "Received wrong hmac.\n");
+            return;
+        }
     } else {
-	if(send_addr == 0){
-	    fprintf(stderr, "Error multicast address.\n");
-	}
+        if(send_addr == 0){
+            fprintf(stderr, "Error multicast address.\n");
+        }
         if(check_hmac(packet, packetlen, bodylen, neigh->address,
                       send_addr) == 0){
             fprintf(stderr, "Received wrong hmac.\n");
@@ -495,7 +515,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
                    format_address(address));
             if(message[2] == 0 || interface_ll_address(ifp, address)) {
                 int changed;
-                rc = parse_ihu_subtlv(message + 8 + rc, len - 6 - rc,
+                rc = parse_ihu_subtlv(message + 8 + rc, len - 6 - rc, neigh,
                                       &hello_send_us, &hello_rtt_receive_time,
                                       NULL);
                 if(rc < 0)
@@ -867,7 +887,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
                            hopc, seqno, router_id);
         } else if(type == MESSAGE_TSPC) {
 	    /* We're dealing with the TS/PC message in check_tspc(). */
-	} else {
+        } else {
             debugf("Received unknown packet type %d from %s on %s.\n",
                    type, format_address(from), ifp->name);
         }
@@ -952,16 +972,15 @@ flushbuf(struct buffered *buf)
     assert(buf->len <= buf->size);
 
     if(buf->len > 0) {
-	add_tspc(buf);
+        add_tspc(buf);
         debugf("  (flushing %d buffered bytes)\n", buf->len);
         DO_HTONS(packet_header + 2, buf->len);
         fill_rtt_message(buf);
-	hmac_space = add_hmac(packet_header, buf->buf, buf->len, 1, buf->ll,
-			      buf->sin6.sin6_addr.s6_addr);
-	if(hmac_space == -1) {
-	    fprintf(stderr, "Add_hmac fail. \n");
-	    return;
-	}
+        hmac_space = add_hmac(packet_header, buf, 1);
+        if(hmac_space == -1) {
+            fprintf(stderr, "Add_hmac fail. \n");
+            return;
+        }
         rc = babel_send(protocol_socket,
                         packet_header, sizeof(packet_header),
                         buf->buf, (buf->len + hmac_space),
@@ -1006,7 +1025,7 @@ ensure_space(struct buffered *buf, int space)
 {
     if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < space){
         buf->buf += buf->len;
-	flushbuf(buf);
+        flushbuf(buf);
     }
 }
 
@@ -1014,7 +1033,7 @@ static void
 start_message(struct buffered *buf, int type, int len)
 {
     if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < len + 2) {
-	flushbuf(buf);
+        flushbuf(buf);
     }
     buf->buf[buf->len++] = type;
     buf->buf[buf->len++] = len;
@@ -1069,6 +1088,7 @@ add_tspc(struct buffered *buf)
     last_pc++;
     DO_HTONS(last_tspc + 4, last_pc);
     accumulate_bytes(buf, last_tspc, 6);
+    debugf("adding ts/ps with ts: %u and pc: %hu \n", last_ts, last_pc);
     end_message(buf, MESSAGE_TSPC, 6);
 }
 
@@ -1703,7 +1723,7 @@ buffer_ihu(struct interface *ifp, struct buffered *buf, unsigned short rxcost,
     }
     if(echo) {
         struct anm *anm;
-        printf("add echo\n");
+        debugf("add echo\n");
         anm = find_anm(address, ifp);
         accumulate_byte(buf, SUBTLV_ECHO);
 	accumulate_byte(buf, 6);
