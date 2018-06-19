@@ -281,7 +281,7 @@ parse_ihu_subtlv(const unsigned char *a, int alen,
             debugf("(echo)TS:%u, PC: %hu.\n" ,ts, pc);
 	    if(check_echo(ts, last_ts)){
 		neigh->echo_receive_time = now;
-	    } else if(check_echo_age(&neigh->echo_receive_time)){
+	    } else if(check_echo_age(&neigh->echo_receive_time, &now)){
 		/* Nothing to do. */
 	    } else {
                 fprintf(stderr,
@@ -297,7 +297,7 @@ parse_ihu_subtlv(const unsigned char *a, int alen,
         i += len + 2;
     }
     if(have_echo){
-	if(!check_echo_age(&neigh->echo_receive_time)){
+	if(!check_echo_age(&neigh->echo_receive_time, &now)){
 	    fprintf(stderr, "Echo has expired.\n");
 	}
     }

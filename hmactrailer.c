@@ -172,18 +172,11 @@ check_tspc(const unsigned char *packet, int bodylen,
 }
 
 int
-check_echo_age(struct timeval *last_echo)
+check_echo_age(struct timeval *last_echo, struct timeval *now)
 {
-    struct timeval echo_deadline = {128, 0};
-
-    if(echo_deadline.tv_sec < last_echo->tv_sec)
-        return 0;
-    else if(echo_deadline.tv_sec > last_echo->tv_sec)
-        return 1;
-    else if(echo_deadline.tv_usec < last_echo->tv_usec)
-        return 0;
-    else
-        return 1;
+    struct timeval deadline;
+    timeval_add_msec(&deadline, last_echo, 128 * 1000);
+    return timeval_compare(now, &deadline) <= 0;
 }
 
 int
