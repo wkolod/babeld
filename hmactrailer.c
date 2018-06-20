@@ -61,39 +61,38 @@ flush_key(struct key *key)
 struct key *
 add_key(char *id, int type, unsigned char *value)
 {
-    struct key *key = find_key(id);
+    struct key *key;
+
+    assert(value != NULL);
+
+    key = find_key(id);
     if(key) {
         if(type == AUTH_TYPE_NONE) {
 	    flush_key(key);
 	    return NULL;
-	} else if(type && value) {
-	    key->type = type;
-	    key->value = value;
-	    return key;
-	} else {
-	    return NULL;
 	}
+	key->type = type;
+	key->value = value;
+	return key;
     }
 
-    if(type != AUTH_TYPE_NONE && value) {
-	if(numkeys >= maxkeys) {
-	    struct key *new_keys;
-	    int n = maxkeys < 1 ? 8 : 2 * maxkeys;
-	    new_keys = realloc(keys, n * sizeof(struct key));
-	    if(new_keys == NULL)
-		return NULL;
-	    maxkeys = n;
-	    keys = new_keys;
-	}
-
-	keys[numkeys].id = id;
-	keys[numkeys].type = type;
-	keys[numkeys].value = value;
-	numkeys++;
-	return &keys[numkeys - 1];
-    } else {
+    if(type == AUTH_TYPE_NONE)
 	return NULL;
+    if(numkeys >= maxkeys) {
+	struct key *new_keys;
+	int n = maxkeys < 1 ? 8 : 2 * maxkeys;
+	new_keys = realloc(keys, n * sizeof(struct key));
+	if(new_keys == NULL)
+	    return NULL;
+	maxkeys = n;
+	keys = new_keys;
     }
+
+    keys[numkeys].id = id;
+    keys[numkeys].type = type;
+    keys[numkeys].value = value;
+    numkeys++;
+    return &keys[numkeys - 1];
 }
 
 static int
@@ -113,7 +112,7 @@ compute_hmac(unsigned char *src, unsigned char *dst,
     if(key == NULL) {
 	key = add_key("toto", AUTH_TYPE_SHA1, (unsigned char *)"Ala ma kota");
 	if(key == NULL) {
-	    fprintf(stderr, "Couldn't create ANM.\n");
+	    fprintf(stderr, "Couldn't create HASH.\n");
 	    return -1;
 	}
     }
@@ -163,7 +162,8 @@ compute_hmac(unsigned char *src, unsigned char *dst,
 
 int
 add_hmac(unsigned char *packet_header, char *buf, int buf_len,
-	 int nb_hmac, unsigned char *addr_src, unsigned char *addr_dst)
+	 int nb_hmac, unsigned char *addr_src, unsigned char *addr_dst,
+	 struct key *key)
 {
     int i = buf_len;
     int hmaclen;
@@ -177,7 +177,7 @@ add_hmac(unsigned char *packet_header, char *buf, int buf_len,
 	buf[i+1] = DIGEST_LEN;
 	hmaclen = compute_hmac(addr_src, addr_dst, packet_header,
 			       (unsigned char *)buf + i + 2,
-			       (unsigned char *)buf, buf_len, NULL);
+			       (unsigned char *)buf, buf_len, key);
 	if(hmaclen < 0){
 	    return -1;
 	}
@@ -195,16 +195,20 @@ compare_hmac(unsigned char *src, unsigned char *dst,
 	     const unsigned char *hmac, int hmaclen)
 {
     unsigned char true_hmac[DIGEST_LEN];
+    int true_hmaclen;
     unsigned char packet_header[4] = {packet[0], packet[1], packet[2],
 				      packet[3]};
-    int true_hmaclen = compute_hmac(src, dst, packet_header, true_hmac,
-				    packet + 4, bodylen, NULL);
-    if(true_hmaclen != hmaclen) {
-	fprintf(stderr, "Length inconsistency of two hmacs.\n");
-	return -1;
+    int i;
+    for(i = 0; i < numkeys; i++) {
+	true_hmaclen = compute_hmac(src, dst, packet_header, true_hmac,
+					packet + 4, bodylen, &keys[i]);
+	if(true_hmaclen != hmaclen) {
+	    fprintf(stderr, "Length inconsistency of two hmacs.\n");
+	    return -1;
+	}
+	if(memcmp(true_hmac, hmac, hmaclen) == 0)
+	    return 1;
     }
-    if(memcmp(true_hmac, hmac, hmaclen) == 0)
-	return 1;
     return 0;
 }
 

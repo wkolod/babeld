@@ -114,6 +114,9 @@ find_neighbour(const unsigned char *address, struct interface *ifp)
     neigh->buf.sin6.sin6_port = htons(protocol_port);
     neigh->buf.sin6.sin6_scope_id = ifp->ifindex;
     memcpy(neigh->buf.ll, ifp->ll[0], 16);
+    neigh->buf.key.id = ifp->buf.key.id;
+    neigh->buf.key.type = ifp->buf.key.type;
+    neigh->buf.key.value = ifp->buf.key.value;
     neigh->next = neighs;
     neighs = neigh;
     local_notify_neighbour(neigh, LOCAL_ADD);

@@ -957,7 +957,7 @@ flushbuf(struct buffered *buf)
         DO_HTONS(packet_header + 2, buf->len);
         fill_rtt_message(buf);
 	hmac_space = add_hmac(packet_header, buf->buf, buf->len, 1, buf->ll,
-			      buf->sin6.sin6_addr.s6_addr);
+			      buf->sin6.sin6_addr.s6_addr, &buf->key);
 	if(hmac_space == -1) {
 	    fprintf(stderr, "Add_hmac fail. \n");
 	    return;

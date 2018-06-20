@@ -677,10 +677,10 @@ parse_anonymous_ifconf(int c, gnc_t gnc, void *closure,
             if_conf->max_rtt_penalty = penalty;
         } else if(strcmp(token, "hmac") == 0) {
 	    char *key_id;
+	    struct key *key;
 	    c = getword(c, &key_id, gnc, closure);
 	    if(c < -1)
                 goto error;
-	    struct key *key;
 	    key = find_key(key_id);
             if_conf->key = key;
 	} else {
@@ -728,7 +728,7 @@ parse_ifconf(int c, gnc_t gnc, void *closure,
 static int
 parse_key(int c, gnc_t gnc, void *closure, struct key **key_return)
 {
-    char *token, *auth_type;
+    char *token = NULL;
     struct key *key;
 
     key = calloc(1, sizeof(struct key));
@@ -750,6 +750,7 @@ parse_key(int c, gnc_t gnc, void *closure, struct key **key_return)
 		goto error;
 	    }
 	} else if(strcmp(token, "type") == 0) {
+	    char *auth_type;
 	    c = getword(c, &auth_type, gnc, closure);
 	    if(c < -1 || auth_type == NULL)
 		goto error;
@@ -758,8 +759,10 @@ parse_key(int c, gnc_t gnc, void *closure, struct key **key_return)
 	    } else if(strcmp(auth_type, "sha1") == 0) {
 		key->type = AUTH_TYPE_SHA1;
 	    } else {
+		free(auth_type);
 		goto error;
 	    }
+	    free(auth_type);
 	} else if(strcmp(token, "value") == 0) {
 	    c = gethex(c, &key->value, gnc, closure);
 	    if(c < -1 || key->value == NULL)
@@ -774,7 +777,6 @@ parse_key(int c, gnc_t gnc, void *closure, struct key **key_return)
 
  error:
     free(token);
-    free(auth_type);
     free(key);
     return -2;
 }
