@@ -30,8 +30,8 @@ THE SOFTWARE.
 #define CONFIG_ACTION_NO 5
 
 #define AUTH_TYPE_NONE 0
-#define AUTH_TYPE_PLAINTEXT 1
-#define AUTH_TYPE_SHA1 2
+#define AUTH_TYPE_SHA1 1
+#define AUTH_TYPE_RIPEMD 2
 
 struct filter_result {
     unsigned int add_metric; /* allow = 0, deny = INF, metric = <0..INF> */

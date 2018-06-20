@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <assert.h>
 #include <netinet/in.h>
 #include <openssl/sha.h>
 #include <openssl/ripemd.h>
@@ -10,17 +11,95 @@
 #include "interface.h"
 #include "neighbour.h"
 #include "hmactrailer.h"
+#include "configuration.h"
 #include "kernel.h"
 #include "anm.h"
 #include "message.h"
 #include "util.h"
 
-unsigned char *key = (unsigned char *)"Ala ma kota";
+struct key *keys;
+int numkeys = 0, maxkeys = 0;
+
+struct key *
+find_key(const char *id)
+{
+    int i;
+    for(i = 0; i < numkeys; i++) {
+	if(strcmp(keys[i].id, id) == 0)
+            return &keys[i];
+    }
+    return NULL;
+}
+
+void
+flush_key(struct key *key)
+{
+    int i;
+    i = key - keys;
+    assert(i >= 0 && i < numkeys);
+
+    if(i != numkeys - 1)
+        memcpy(keys + i, keys + numkeys - 1, sizeof(struct key));
+    numkeys--;
+    VALGRIND_MAKE_MEM_UNDEFINED(keys + numkeys, sizeof(struct key));
+
+    if(numkeys == 0) {
+        free(keys);
+        keys = NULL;
+        maxkeys = 0;
+    } else if(maxkeys > 8 && numkeys < maxkeys / 4) {
+        struct key *new_keys;
+        int n = maxkeys / 2;
+        new_keys = realloc(keys, n * sizeof(struct key));
+        if(new_keys == NULL)
+            return;
+        keys = new_keys;
+        maxkeys = n;
+    }
+}
+
+struct key *
+add_key(char *id, int type, unsigned char *value)
+{
+    struct key *key = find_key(id);
+    if(key) {
+        if(type == AUTH_TYPE_NONE) {
+	    flush_key(key);
+	    return NULL;
+	} else if(type && value) {
+	    key->type = type;
+	    key->value = value;
+	    return key;
+	} else {
+	    return NULL;
+	}
+    }
+
+    if(type != AUTH_TYPE_NONE && value) {
+	if(numkeys >= maxkeys) {
+	    struct key *new_keys;
+	    int n = maxkeys < 1 ? 8 : 2 * maxkeys;
+	    new_keys = realloc(keys, n * sizeof(struct key));
+	    if(new_keys == NULL)
+		return NULL;
+	    maxkeys = n;
+	    keys = new_keys;
+	}
+
+	keys[numkeys].id = id;
+	keys[numkeys].type = type;
+	keys[numkeys].value = value;
+	numkeys++;
+	return &keys[numkeys - 1];
+    } else {
+	return NULL;
+    }
+}
 
 static int
 compute_hmac(unsigned char *src, unsigned char *dst,
 	     unsigned char *packet_header, unsigned char *hmac,
-	     const unsigned char *body, int bodylen, int hash_type)
+	     const unsigned char *body, int bodylen, struct key *key)
 {
     SHA_CTX inner_ctx;
     SHA_CTX outer_ctx;
@@ -31,14 +110,21 @@ compute_hmac(unsigned char *src, unsigned char *dst,
     unsigned char outer_key_pad[SHA1_BLOCK_SIZE];
     int i;
     int keylen;
+    if(key == NULL) {
+	key = add_key("toto", AUTH_TYPE_SHA1, (unsigned char *)"Ala ma kota");
+	if(key == NULL) {
+	    fprintf(stderr, "Couldn't create ANM.\n");
+	    return -1;
+	}
+    }
 
-    switch(hash_type) {
-    case 0:
-	keylen = sizeof(key);
-	memcpy(key_hash, key, keylen);
+    switch(key->type) {
+    case 1:
+	keylen = sizeof(key->value);
+	memcpy(key_hash, key->value, keylen);
 	if(keylen > SHA1_BLOCK_SIZE) {
 	    SHA1_Init(&key_ctx);
-	    SHA1_Update(&key_ctx, key, keylen);
+	    SHA1_Update(&key_ctx, key->value, keylen);
 	    SHA1_Final(key_hash, &key_ctx);
 	    keylen = SHA_DIGEST_LENGTH;
 	}
@@ -67,7 +153,7 @@ compute_hmac(unsigned char *src, unsigned char *dst,
 	SHA1_Update(&outer_ctx, inner_hash, SHA_DIGEST_LENGTH);
 	SHA1_Final(hmac, &outer_ctx);
 	return SHA_DIGEST_LENGTH;
-    case 1:
+    case 2:
 	RIPEMD160(body, bodylen, hmac);
 	return RIPEMD160_DIGEST_LENGTH;
     default:
@@ -91,7 +177,7 @@ add_hmac(unsigned char *packet_header, char *buf, int buf_len,
 	buf[i+1] = DIGEST_LEN;
 	hmaclen = compute_hmac(addr_src, addr_dst, packet_header,
 			       (unsigned char *)buf + i + 2,
-			       (unsigned char *)buf, buf_len, 0);
+			       (unsigned char *)buf, buf_len, NULL);
 	if(hmaclen < 0){
 	    return -1;
 	}
@@ -112,7 +198,7 @@ compare_hmac(unsigned char *src, unsigned char *dst,
     unsigned char packet_header[4] = {packet[0], packet[1], packet[2],
 				      packet[3]};
     int true_hmaclen = compute_hmac(src, dst, packet_header, true_hmac,
-				    packet + 4, bodylen, 0);
+				    packet + 4, bodylen, NULL);
     if(true_hmaclen != hmaclen) {
 	fprintf(stderr, "Length inconsistency of two hmacs.\n");
 	return -1;

@@ -3,7 +3,15 @@
 #define DIGEST_LEN 20
 #define SHA1_BLOCK_SIZE 64
 
+struct key {
+    char *id;
+    int type;
+    unsigned char *value;
+};
 
+struct key *find_key(const char *id);
+void flush_key(struct key *key);
+struct key *add_key(char *id, int type, unsigned char *value);
 int add_hmac(unsigned char *packet_header, char *buf, int buf_len,
 	     int nb_hmac, unsigned char *addr_src, unsigned char *addr_dst);
 int check_tspc(const unsigned char *packet, int bodylen,

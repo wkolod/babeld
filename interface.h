@@ -52,6 +52,7 @@ struct interface_conf {
     unsigned int rtt_min;
     unsigned int rtt_max;
     unsigned int max_rtt_penalty;
+    struct key *key;
     struct interface_conf *next;
 };
 

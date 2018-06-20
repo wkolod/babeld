@@ -39,6 +39,7 @@ THE SOFTWARE.
 #include "interface.h"
 #include "route.h"
 #include "kernel.h"
+#include "hmactrailer.h"
 #include "configuration.h"
 #include "rule.h"
 
@@ -322,6 +323,63 @@ get_interface_type(int c, int *type_r, gnc_t gnc, void *closure)
     return c;
 }
 
+static int
+h2i(char c)
+{
+    if(c >= '0' && c <= '9')
+	return c - '0';
+    else if(c >= 'a' && c <= 'f')
+	return c - 'a' + 10;
+    else if(c >= 'A' && c <= 'F')
+	return c - 'A' + 10;
+    else
+	return -1;
+}
+
+static int
+fromhex(unsigned char *dest, char *src, int n)
+{
+    int i;
+    if(n % 2 != 0)
+	return -1;
+    for(i = 0; i < n; i++) {
+	int a, b;
+	a = h2i(src[i*2]);
+	if(a < 0)
+	    return -1;
+	b = h2i(src[i*2 + 1]);
+	if(b < 0)
+	    return -1;
+	dest[i] = a*16 + b;
+    }
+    return n/2;
+}
+
+static int
+gethex(int c, unsigned char **value_r, gnc_t gnc, void *closure)
+{
+    char *t;
+    unsigned char *value;
+    int rc;
+    c = getword(c, &t, gnc, closure);
+    if(c < -1)
+        return c;
+    if(strlen(t) % 2 != 0) {
+	free(t);
+	return -2;
+    }
+    value = malloc(strlen(t)/2);
+    rc = fromhex(value, t, strlen(t));
+    free(t);
+    if(rc < 0) {
+	free(value);
+	return -2;
+    }
+    *value_r = value;
+    if(*value_r == NULL)
+	return -2;
+    return c;
+}
 
 static int
 parse_filter(int c, gnc_t gnc, void *closure, struct filter **filter_return)
@@ -617,7 +675,15 @@ parse_anonymous_ifconf(int c, gnc_t gnc, void *closure,
             if(c < -1 || penalty <= 0 || penalty > 0xFFFF)
                 goto error;
             if_conf->max_rtt_penalty = penalty;
-        } else {
+        } else if(strcmp(token, "hmac") == 0) {
+	    char *key_id;
+	    c = getword(c, &key_id, gnc, closure);
+	    if(c < -1)
+                goto error;
+	    struct key *key;
+	    key = find_key(key_id);
+            if_conf->key = key;
+	} else {
             goto error;
         }
         free(token);
@@ -660,49 +726,56 @@ parse_ifconf(int c, gnc_t gnc, void *closure,
 }
 
 static int
-parse_key(int c, gnc_t gnc, void *closure)
+parse_key(int c, gnc_t gnc, void *closure, struct key **key_return)
 {
-    char *token, *key;
-    int key_id, auth_type;
+    char *token, *auth_type;
+    struct key *key;
 
-    c = skip_whitespace(c, gnc, closure);
-    if(c < 0 || c == '\n' || c == '#') {
+    key = calloc(1, sizeof(struct key));
+    if(key == NULL)
 	goto error;
-    }
-
-    c = getint(c, &key_id, gnc, closure);
-    if(c < -1) {
-	goto error;
-    }
-
-    c = getstring(c, &token, gnc, closure);
-    if(c < -1 || token == NULL)
-	goto error;
-
-    if(strcmp(token, "none") == 0) {
-	auth_type = AUTH_TYPE_NONE;
-	/* remove key */
-    } else if(strcmp(token, "plaintext") == 0) {
-	auth_type = AUTH_TYPE_PLAINTEXT;
-	c = getstring(c, &key, gnc, closure);
-	if(c < -1 || key == NULL)
+    while(1) {
+	c = skip_whitespace(c, gnc, closure);
+	if(c < 0 || c == '\n' || c == '#') {
+	    c = skip_to_eol(c, gnc, closure);
+	    break;
+	}
+	c = getword(c, &token, gnc, closure);
+	if(c < -1) {
 	    goto error;
-	/* add key */
-    } else if(strcmp(token, "sha1") == 0) {
-	auth_type = AUTH_TYPE_SHA1;
-	c = getstring(c, &key, gnc, closure);
-	if(c < -1 || key == NULL)
+	}
+	if(strcmp(token, "id") == 0) {
+	    c = getword(c, &key->id, gnc, closure);
+	    if(c < -1 || key->id == NULL) {
+		goto error;
+	    }
+	} else if(strcmp(token, "type") == 0) {
+	    c = getword(c, &auth_type, gnc, closure);
+	    if(c < -1 || auth_type == NULL)
+		goto error;
+	    if(strcmp(auth_type, "none") == 0) {
+		key->type = AUTH_TYPE_NONE;
+	    } else if(strcmp(auth_type, "sha1") == 0) {
+		key->type = AUTH_TYPE_SHA1;
+	    } else {
+		goto error;
+	    }
+	} else if(strcmp(token, "value") == 0) {
+	    c = gethex(c, &key->value, gnc, closure);
+	    if(c < -1 || key->value == NULL)
+		goto error;
+	} else {
 	    goto error;
-	/* add key */
-    } else {
-	goto error;
+	}
+	free(token);
     }
-
-    free(token);
+    *key_return = key;
     return c;
 
  error:
     free(token);
+    free(auth_type);
+    free(key);
     return -2;
 }
 
@@ -1110,10 +1183,13 @@ parse_config_line(int c, gnc_t gnc, void *closure,
         if(c < -1 || !action_return)
             goto fail;
         reopen_logfile();
-    } else if(strcmp(token, "hmac") == 0) {
-	c = parse_key(c, gnc, closure);
+    } else if(strcmp(token, "key") == 0) {
+	struct key *key;
+	c = parse_key(c, gnc, closure, &key);
 	if(c < -1)
 	    goto fail;
+	if(key->id && key->type)
+	    add_key(key->id, key->type, key->value);
     } else {
         c = parse_option(c, gnc, closure, token);
         if(c < -1)
