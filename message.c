@@ -52,9 +52,6 @@ unsigned short myseqno = 0;
 struct timeval seqno_time = {0, 0};
 
 unsigned char last_tspc[6] = {0};
-unsigned int first_ts = 0;
-unsigned short last_pc = 0;
-unsigned int last_ts = 0;
 
 extern const unsigned char v4prefix[16];
 
@@ -279,7 +276,7 @@ parse_ihu_subtlv(const unsigned char *a, int alen,
             DO_NTOHL(ts, a + i + 2);
             DO_NTOHS(pc, a + i + 6);
             debugf("(echo)TS:%u, PC: %hu.\n" ,ts, pc);
-	    if(check_echo(ts, last_ts)){
+	    if(check_echo(ts, last_tspc)){
 		neigh->echo_receive_time = now;
 	    } else if(check_echo_age(&neigh->echo_receive_time, &now)){
 		/* Nothing to do. */
@@ -1088,7 +1085,8 @@ add_tspc(struct buffered *buf)
     last_pc++;
     DO_HTONS(last_tspc + 4, last_pc);
     accumulate_bytes(buf, last_tspc, 6);
-    debugf("adding ts/ps with ts: %u and pc: %hu \n", last_ts, last_pc);
+    debugf("adding ts/ps with ts: %ld and pc: %hu \n",
+	   realtime.tv_sec, last_pc);
     end_message(buf, MESSAGE_TSPC, 6);
 }
 
