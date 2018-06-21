@@ -11,7 +11,7 @@
 #include "interface.h"
 #include "neighbour.h"
 #include "util.h"
-#include "hmactrailer.h"
+#include "hmac.h"
 #include "configuration.h"
 #include "kernel.h"
 #include "anm.h"

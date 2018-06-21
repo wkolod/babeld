@@ -39,7 +39,7 @@ THE SOFTWARE.
 #include "interface.h"
 #include "route.h"
 #include "kernel.h"
-#include "hmactrailer.h"
+#include "hmac.h"
 #include "configuration.h"
 #include "rule.h"
 

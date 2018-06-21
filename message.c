@@ -41,7 +41,7 @@ THE SOFTWARE.
 #include "resend.h"
 #include "message.h"
 #include "configuration.h"
-#include "hmactrailer.h"
+#include "hmac.h"
 #include "anm.h"
 
 unsigned char packet_header[4] = {42, 2};

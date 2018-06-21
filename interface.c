@@ -37,7 +37,7 @@ THE SOFTWARE.
 #include "kernel.h"
 #include "interface.h"
 #include "neighbour.h"
-#include "hmactrailer.h"
+#include "hmac.h"
 #include "message.h"
 #include "route.h"
 #include "configuration.h"
