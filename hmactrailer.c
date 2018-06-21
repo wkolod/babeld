@@ -10,12 +10,12 @@
 #include "babeld.h"
 #include "interface.h"
 #include "neighbour.h"
+#include "util.h"
 #include "hmactrailer.h"
 #include "configuration.h"
 #include "kernel.h"
 #include "anm.h"
 #include "message.h"
-#include "util.h"
 
 struct key *keys;
 int numkeys = 0, maxkeys = 0;
@@ -261,12 +261,14 @@ check_echo_age(struct timeval *last_echo, struct timeval *now)
 }
 
 int
-check_echo(unsigned int ts, unsigned int last_ts)
+check_echo(unsigned int ts, unsigned char *last_tspc)
 {
-    unsigned int first = 0;
+    unsigned int first;
     unsigned int last = 0;
-    memcpy(&last, &last_ts, 4);
-    memcpy(&first, &last_ts, 4);
+    unsigned int last_ts;
+    memcpy(&last_ts, last_tspc, 4);
+    DO_NTOHL(last, &last_ts);
+    memcpy(&first, &last, 4);
     first -= 30;
     if(first < 0)
 	first = 0;
