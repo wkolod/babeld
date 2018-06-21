@@ -109,13 +109,6 @@ compute_hmac(unsigned char *src, unsigned char *dst,
     unsigned char outer_key_pad[SHA1_BLOCK_SIZE];
     int i;
     int keylen;
-    if(key == NULL) {
-	key = add_key("toto", AUTH_TYPE_SHA1, (unsigned char *)"Ala ma kota");
-	if(key == NULL) {
-	    fprintf(stderr, "Couldn't create HASH.\n");
-	    return -1;
-	}
-    }
 
     switch(key->type) {
     case 1:
@@ -178,7 +171,7 @@ add_hmac(unsigned char *packet_header, char *buf, int buf_len,
 	hmaclen = compute_hmac(addr_src, addr_dst, packet_header,
 			       (unsigned char *)buf + i + 2,
 			       (unsigned char *)buf, buf_len, key);
-	if(hmaclen < 0){
+	if(hmaclen < 0) {
 	    return -1;
 	}
 	i += hmaclen + 2;

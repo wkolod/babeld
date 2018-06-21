@@ -385,22 +385,23 @@ parse_packet(const unsigned char *from, struct interface *ifp,
                 bodylen, packetlen);
         bodylen = packetlen - 4;
     }
-
-    if(is_unicast){
-	if(check_hmac(packet, packetlen, bodylen, neigh->address,
-		      *neigh->ifp->ll) == 0){
-	    fprintf(stderr, "Received wrong hmac.\n");
-	    return;
+    if(&ifp->buf.key != NULL && ifp->buf.key.type != 0) {
+	if(is_unicast){
+	    if(check_hmac(packet, packetlen, bodylen, neigh->address,
+			  *neigh->ifp->ll) == 0){
+		fprintf(stderr, "Received wrong hmac.\n");
+		return;
+	    }
+	} else {
+	    if(send_addr == 0){
+		fprintf(stderr, "Error multicast address.\n");
+	    }
+	    if(check_hmac(packet, packetlen, bodylen, neigh->address,
+			  send_addr) == 0){
+		fprintf(stderr, "Received wrong hmac.\n");
+		return;
+	    }
 	}
-    } else {
-	if(send_addr == 0){
-	    fprintf(stderr, "Error multicast address.\n");
-	}
-        if(check_hmac(packet, packetlen, bodylen, neigh->address,
-                      send_addr) == 0){
-            fprintf(stderr, "Received wrong hmac.\n");
-            return;
-        }
     }
 
     if(check_tspc(packet, bodylen, neigh->address, ifp) == 0){
@@ -948,7 +949,7 @@ void
 flushbuf(struct buffered *buf)
 {
     int rc;
-    int hmac_space;
+    int hmac_space = 0;
     assert(buf->len <= buf->size);
 
     if(buf->len > 0) {
@@ -956,11 +957,13 @@ flushbuf(struct buffered *buf)
         debugf("  (flushing %d buffered bytes)\n", buf->len);
         DO_HTONS(packet_header + 2, buf->len);
         fill_rtt_message(buf);
-	hmac_space = add_hmac(packet_header, buf->buf, buf->len, 1, buf->ll,
-			      buf->sin6.sin6_addr.s6_addr, &buf->key);
-	if(hmac_space == -1) {
-	    fprintf(stderr, "Add_hmac fail. \n");
-	    return;
+	if(&buf->key != NULL && buf->key.type != 0) {
+	    hmac_space = add_hmac(packet_header, buf->buf, buf->len, 1, buf->ll,
+				  buf->sin6.sin6_addr.s6_addr, &buf->key);
+	    if(hmac_space == -1) {
+		fprintf(stderr, "Add_hmac fail. \n");
+		return;
+	    }
 	}
         rc = babel_send(protocol_socket,
                         packet_header, sizeof(packet_header),
@@ -1004,17 +1007,30 @@ schedule_flush_now(struct buffered *buf)
 static void
 ensure_space(struct buffered *buf, int space)
 {
-    if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < space){
-        buf->buf += buf->len;
-	flushbuf(buf);
+    if(&buf->key != NULL) {
+	if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < space) {
+	    buf->buf += buf->len;
+	    flushbuf(buf);
+	}
+    } else {
+	if(buf->size - (buf->len + TLV_TSPC_LEN) < space) {
+	    buf->buf += buf->len;
+	    flushbuf(buf);
+	}
     }
 }
 
 static void
 start_message(struct buffered *buf, int type, int len)
 {
-    if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < len + 2) {
-	flushbuf(buf);
+    if(&buf->key != NULL) {
+	if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < len + 2) {
+	    flushbuf(buf);
+	}
+    } else {
+	if(buf->size - (buf->len + TLV_TSPC_LEN) < len + 2) {
+	    flushbuf(buf);
+	}
     }
     buf->buf[buf->len++] = type;
     buf->buf[buf->len++] = len;

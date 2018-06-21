@@ -342,7 +342,7 @@ fromhex(unsigned char *dest, char *src, int n)
     int i;
     if(n % 2 != 0)
 	return -1;
-    for(i = 0; i < n; i++) {
+    for(i = 0; i < n/2; i++) {
 	int a, b;
 	a = h2i(src[i*2]);
 	if(a < 0)
@@ -759,6 +759,7 @@ parse_key(int c, gnc_t gnc, void *closure, struct key **key_return)
 	    } else if(strcmp(auth_type, "sha1") == 0) {
 		key->type = AUTH_TYPE_SHA1;
 	    } else {
+		key->type = 0;
 		free(auth_type);
 		goto error;
 	    }
@@ -825,6 +826,7 @@ merge_ifconf(struct interface_conf *dest,
     MERGE(rtt_min);
     MERGE(rtt_max);
     MERGE(max_rtt_penalty);
+    MERGE(key);
 
 #undef MERGE
 }
