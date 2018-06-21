@@ -758,6 +758,8 @@ parse_key(int c, gnc_t gnc, void *closure, struct key **key_return)
 		key->type = AUTH_TYPE_NONE;
 	    } else if(strcmp(auth_type, "sha1") == 0) {
 		key->type = AUTH_TYPE_SHA1;
+	    } else if(strcmp(auth_type, "ripemd") == 0) {
+		key->type = AUTH_TYPE_RIPEMD;
 	    } else {
 		key->type = 0;
 		free(auth_type);

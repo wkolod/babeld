@@ -39,6 +39,7 @@ struct key {
     char *id;
     int type;
     unsigned char *value;
+    unsigned short ref_count;
 };
 
 struct interface_conf {
@@ -90,7 +91,7 @@ struct buffered {
     int size;
     int flush_interval;
     struct timeval timeout;
-    struct key key;
+    struct key *key;
     char enable_timestamps;
     char have_id;
     char have_nh;
