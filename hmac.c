@@ -1,3 +1,25 @@
+/*
+Copyright (c) 2018 by Clara Dô and Weronika Kolodziejak
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -183,7 +205,7 @@ add_hmac(unsigned char *packet_header, struct buffered *message, int nb_hmac)
     debugf("add_hmac %s -> %s\n",
 	   format_address(addr_src), format_address(addr_dst));
 
-    while (nb_hmac > 0){
+    while (nb_hmac > 0) {
         buf[i] = MESSAGE_HMAC;
 	buf[i+1] = DIGEST_LEN;
 	hmaclen = compute_hmac(addr_src, addr_dst, packet_header,
@@ -212,7 +234,7 @@ compare_hmac(const unsigned char *src, const unsigned char *dst,
     int i;
     for(i = 0; i < numkeys; i++) {
 	true_hmaclen = compute_hmac(src, dst, packet_header, true_hmac,
-					packet + 4, bodylen, keys[i]);
+				    packet + 4, bodylen, keys[i]);
 	if(true_hmaclen != hmaclen) {
 	    fprintf(stderr, "Length inconsistency of two hmacs.\n");
 	    return -1;
@@ -252,23 +274,27 @@ check_hmac(const unsigned char *packet, int packetlen, int bodylen,
 	   const unsigned char *addr_src, const unsigned char *addr_dst)
 {
     int i = bodylen + 4;
-    int hmaclen;
+    int len;
 
     debugf("check_hmac %s -> %s\n",
 	   format_address(addr_src), format_address(addr_dst));
     while(i < packetlen) {
-        hmaclen = packet[i+1];
+	if(i + 1 > packetlen) {
+            fprintf(stderr, "Received truncated message.\n");
+            break;
+        }
+        len = packet[i+1];
         if(packet[i] == MESSAGE_HMAC) {
-	    if(hmaclen + i > packetlen) {
-	        fprintf(stderr, "Received truncated hmac.\n");
+	    if(i + len > packetlen) {
+	        fprintf(stderr, "Received truncated message.\n");
 		return -1;
 	    }
 	    if(compare_hmac(addr_src, addr_dst, packet, bodylen,
-			    packet + i + 2 , hmaclen)) {
+			    packet + i + 2 , len) == 1) {
 		return 1;
 	    }
 	}
-	i += hmaclen + 2;
+	i += len + 2;
     }
     return 0;
 }

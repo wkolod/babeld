@@ -365,7 +365,15 @@ preparse_tspc(const unsigned char *packet, int bodylen,
 	    i++;
 	    continue;
 	}
+	if(i + 1 > bodylen) {
+            fprintf(stderr, "Received truncated message.\n");
+            break;
+        }
 	len = message[1];
+	if(i + len > bodylen) {
+            fprintf(stderr, "Received truncated message.\n");
+            break;
+        }
 	if(type == MESSAGE_TSPC) {
             unsigned char tspc[6];
 	    memcpy(tspc, message + 2, 6);
@@ -456,7 +464,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
 
     if(ifp->buf.key != NULL && ifp->buf.key->type != 0) {
 	if(check_hmac(packet, packetlen, bodylen, neigh->address,
-		      to) == 0) {
+		      to) != 1) {
 	    fprintf(stderr, "Received wrong hmac.\n");
 	    return;
 	}
