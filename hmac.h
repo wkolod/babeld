@@ -1,5 +1,3 @@
-#define TSPC_TYPE 11
-#define HMAC_TYPE 12
 #define DIGEST_LEN 20
 #define SHA1_BLOCK_SIZE 64
 #define RIPEMD160_BLOCK_SIZE 64

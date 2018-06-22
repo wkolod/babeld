@@ -200,7 +200,7 @@ add_hmac(unsigned char *packet_header, struct buffered *message, int nb_hmac)
 	   format_address(addr_src), format_address(addr_dst));
 
     while (nb_hmac > 0){
-        buf[i] = HMAC_TYPE;
+        buf[i] = MESSAGE_HMAC;
 	buf[i+1] = DIGEST_LEN;
 	hmaclen = compute_hmac(addr_src, addr_dst, packet_header,
 			       (unsigned char *)buf + i + 2,
@@ -267,7 +267,7 @@ check_tspc(const unsigned char *packet, int bodylen,
 	    continue;
 	}
 	len = message[1];
-	if(type == TSPC_TYPE) {
+	if(type == MESSAGE_TSPC) {
             unsigned char tspc[6];
 	    memcpy(tspc, message + 2, 6);
 	    if(memcmp(anm->last_tspc, tspc, 6) >= 0)
@@ -319,7 +319,7 @@ check_hmac(const unsigned char *packet, int packetlen, int bodylen,
 	   format_address(addr_src), format_address(addr_dst));
     while(i < packetlen) {
         hmaclen = packet[i+1];
-        if(packet[i] == HMAC_TYPE) {
+        if(packet[i] == MESSAGE_HMAC) {
 	    if(hmaclen + i > packetlen) {
 	        fprintf(stderr, "Received truncated hmac.\n");
 		return -1;
