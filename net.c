@@ -123,14 +123,13 @@ babel_socket(int port)
 
 int
 babel_recv(int s, void *buf, int buflen, struct sockaddr *sin, int slen,
-	   int *is_unicast_return, unsigned char *src_return)
+	   unsigned char *src_return)
 {
     struct iovec iovec;
     struct msghdr msg;
     unsigned char cmsgbuf[128];
     struct cmsghdr *cmsg;
-    int rc;
-    int is_unicast = -1;
+    int rc, found;
     unsigned char src[16] = {0};
     
     memset(&msg, 0, sizeof(msg));
@@ -147,6 +146,7 @@ babel_recv(int s, void *buf, int buflen, struct sockaddr *sin, int slen,
     if(rc < 0)
 	return rc;
 
+    found = 0;
     memset(src, 0, 16);
     cmsg = CMSG_FIRSTHDR(&msg);
     while(cmsg != NULL) {
@@ -154,16 +154,18 @@ babel_recv(int s, void *buf, int buflen, struct sockaddr *sin, int slen,
 	   cmsg->cmsg_type == IPV6_PKTINFO) {
 	    struct in6_pktinfo *info =(struct in6_pktinfo*)CMSG_DATA(cmsg);
 	    memcpy(src, info->ipi6_addr.s6_addr, 16);
-	    is_unicast = !IN6_IS_ADDR_MULTICAST(&info->ipi6_addr);
+	    found = 1;
 	    break;
 	}
 	cmsg = CMSG_NXTHDR(&msg, cmsg);
     }
 
+    if(!found) {
+	errno = EDESTADDRREQ;
+	return -1;
+    }
     if(src_return != NULL)
 	memcpy(src_return, src, 16);
-    if(is_unicast_return != NULL)
-	*is_unicast_return = is_unicast;
     return rc;
 }
 

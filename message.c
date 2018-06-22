@@ -349,8 +349,8 @@ network_address(int ae, const unsigned char *a, unsigned int len,
 
 void
 parse_packet(const unsigned char *from, struct interface *ifp,
-             const unsigned char *packet, int packetlen, int *is_unicast,
-             unsigned char *send_addr)
+             const unsigned char *packet, int packetlen,
+	     const unsigned char *to)
 {
     int i;
     const unsigned char *message;
@@ -404,21 +404,10 @@ parse_packet(const unsigned char *from, struct interface *ifp,
     }
 
     if(&ifp->buf.key != NULL && ifp->buf.key.type != 0) {
-	if(is_unicast){
-	    if(check_hmac(packet, packetlen, bodylen, neigh->address,
-			  *neigh->ifp->ll) == 0) {
-		fprintf(stderr, "Received wrong hmac.\n");
-		return;
-	    }
-	} else {
-	    if(send_addr == 0) {
-		fprintf(stderr, "Error multicast address.\n");
-	    }
-	    if(check_hmac(packet, packetlen, bodylen, neigh->address,
-			  send_addr) == 0) {
-		fprintf(stderr, "Received wrong hmac.\n");
-		return;
-	    }
+	if(check_hmac(packet, packetlen, bodylen, neigh->address,
+		      to) == 0) {
+	    fprintf(stderr, "Received wrong hmac.\n");
+	    return;
 	}
     }
 
@@ -885,7 +874,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
             handle_request(neigh, prefix, plen, src_prefix, src_plen,
                            hopc, seqno, router_id);
         } else if(type == MESSAGE_TSPC) {
-	    /* We're dealing with the TS/PC message in check_tspc(). */
+            /* We're dealing with the TS/PC message in check_tspc(). */
         } else {
             debugf("Received unknown packet type %d from %s on %s.\n",
                    type, format_address(from), ifp->name);
@@ -975,13 +964,13 @@ flushbuf(struct buffered *buf)
         debugf("  (flushing %d buffered bytes)\n", buf->len);
         DO_HTONS(packet_header + 2, buf->len);
         fill_rtt_message(buf);
-	if(&buf->key != NULL && buf->key.type != 0) {
-	    hmac_space = add_hmac(packet_header, buf, 1);
-	    if(hmac_space == -1) {
-		fprintf(stderr, "Add_hmac fail. \n");
-		return;
-	    }
-	}
+        if(&buf->key != NULL && buf->key.type != 0) {
+            hmac_space = add_hmac(packet_header, buf, 1);
+            if(hmac_space == -1) {
+                fprintf(stderr, "Add_hmac fail. \n");
+                return;
+            }
+        }
         rc = babel_send(protocol_socket,
                         packet_header, sizeof(packet_header),
                         buf->buf, (buf->len + hmac_space),
@@ -1025,15 +1014,15 @@ static void
 ensure_space(struct buffered *buf, int space)
 {
     if(&buf->key != NULL) {
-	if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < space) {
-	    buf->buf += buf->len;
-	    flushbuf(buf);
-	}
+        if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < space) {
+            buf->buf += buf->len;
+            flushbuf(buf);
+        }
     } else {
-	if(buf->size - (buf->len + TLV_TSPC_LEN) < space) {
-	    buf->buf += buf->len;
-	    flushbuf(buf);
-	}
+        if(buf->size - (buf->len + TLV_TSPC_LEN) < space) {
+            buf->buf += buf->len;
+            flushbuf(buf);
+        }
     }
 }
 
@@ -1041,7 +1030,7 @@ static void
 start_message(struct buffered *buf, int type, int len)
 {
     if(&buf->key != NULL) {
-	if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < len + 2) {
+        if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < len + 2) {
             flushbuf(buf);
         }
     } else {
@@ -1103,7 +1092,7 @@ add_tspc(struct buffered *buf)
     DO_HTONS(last_tspc + 4, last_pc);
     accumulate_bytes(buf, last_tspc, 6);
     debugf("adding ts/ps with ts: %ld and pc: %hu \n",
-	   realtime.tv_sec, last_pc);
+           realtime.tv_sec, last_pc);
     end_message(buf, MESSAGE_TSPC, 6);
 }
 

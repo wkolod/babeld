@@ -659,12 +659,10 @@ main(int argc, char **argv)
         }
 
         if(FD_ISSET(protocol_socket, &readfds)) {
-	    int *is_unicast = NULL;
-	    unsigned char send_addr[16];
+	    unsigned char to[16];
             rc = babel_recv(protocol_socket,
                             receive_buffer, receive_buffer_size,
-                            (struct sockaddr*)&sin6, sizeof(sin6), is_unicast,
-			    send_addr);
+                            (struct sockaddr*)&sin6, sizeof(sin6), to);
             if(rc < 0) {
                 if(errno != EAGAIN && errno != EINTR) {
                     perror("recv");
@@ -676,7 +674,7 @@ main(int argc, char **argv)
                         continue;
                     if(ifp->ifindex == sin6.sin6_scope_id) {
                         parse_packet((unsigned char*)&sin6.sin6_addr, ifp,
-                                     receive_buffer, rc, is_unicast, send_addr);
+                                     receive_buffer, rc, to);
                         VALGRIND_MAKE_MEM_UNDEFINED(receive_buffer,
                                                     receive_buffer_size);
                         break;

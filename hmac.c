@@ -96,7 +96,7 @@ add_key(char *id, int type, unsigned char *value)
 }
 
 static int
-compute_hmac(unsigned char *src, unsigned char *dst,
+compute_hmac(const unsigned char *src, const unsigned char *dst,
 	     unsigned char *packet_header, unsigned char *hmac,
 	     const unsigned char *body, int bodylen, struct key *key)
 {
@@ -185,7 +185,7 @@ add_hmac(unsigned char *packet_header, struct buffered *message, int nb_hmac)
 
 
 static int
-compare_hmac(unsigned char *src, unsigned char *dst,
+compare_hmac(const unsigned char *src, const unsigned char *dst,
 	     const unsigned char *packet, int bodylen,
 	     const unsigned char *hmac, int hmaclen)
 {
@@ -209,7 +209,7 @@ compare_hmac(unsigned char *src, unsigned char *dst,
 
 int
 check_tspc(const unsigned char *packet, int bodylen,
-	   unsigned char *from, struct interface *ifp)
+	   const unsigned char *from, struct interface *ifp)
 {
     int i, nb_tspc;
     const unsigned char *message;
@@ -281,7 +281,7 @@ check_echo(unsigned int ts, unsigned char *last_tspc)
 
 int
 check_hmac(const unsigned char *packet, int packetlen, int bodylen,
-	   unsigned char *addr_src, unsigned char *addr_dst)
+	   const unsigned char *addr_src, const unsigned char *addr_dst)
 {
     int i = bodylen + 4;
     int hmaclen;

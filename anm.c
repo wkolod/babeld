@@ -32,7 +32,8 @@ find_anm(const unsigned char *from, const struct interface *ifp)
 }
 
 struct anm *
-add_anm(unsigned char *from, struct interface *ifp, unsigned char *last_tspc)
+add_anm(const unsigned char *from, struct interface *ifp,
+	unsigned char *last_tspc)
 {
     struct anm *anm = find_anm(from, ifp);
     if(anm) {
