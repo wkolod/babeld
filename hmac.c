@@ -44,7 +44,8 @@ release_key(struct key *key)
 {
     assert(key->ref_count > 0);
     key->ref_count--;
-    /* XXX free if zero */
+    if(key->ref_count == 0)
+	free(key);
 }
 
 struct key *

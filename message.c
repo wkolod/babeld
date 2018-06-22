@@ -403,8 +403,8 @@ parse_packet(const unsigned char *from, struct interface *ifp,
         bodylen = packetlen - 4;
     }
 
-    if(&ifp->buf.key != NULL && ifp->buf.key->type != 0) {
-	if(is_unicast){
+    if(ifp->buf.key != NULL && ifp->buf.key->type != 0) {
+	if(is_unicast) {
 	    if(check_hmac(packet, packetlen, bodylen, neigh->address,
 			  *neigh->ifp->ll) == 0) {
 		fprintf(stderr, "Received wrong hmac.\n");
@@ -421,7 +421,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
 	    }
 	}
 
-	if(check_tspc(packet, bodylen, neigh->address, ifp) == 0){
+	if(check_tspc(packet, bodylen, neigh->address, ifp) == 0) {
 	    fprintf(stderr, "Received wrong TS/PC.\n");
 	    return;
 	}
