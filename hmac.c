@@ -297,14 +297,11 @@ check_echo(unsigned int ts, unsigned char *last_tspc)
 {
     unsigned int first;
     unsigned int last = 0;
-    unsigned int last_ts;
-    memcpy(&last_ts, last_tspc, 4);
-    DO_NTOHL(last, &last_ts);
-    memcpy(&first, &last, 4);
-    first -= 30;
+    DO_NTOHL(last, last_tspc);
+    first = last - 30;
     if(first < 0)
 	first = 0;
-    if(ts >= first && ts <= last){
+    if(ts >= first && ts <= last) {
 	return 1;
     }
     fprintf(stderr, "Invalid echo.\n");
