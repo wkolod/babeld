@@ -240,51 +240,6 @@ compare_hmac(const unsigned char *src, const unsigned char *dst,
 }
 
 int
-check_tspc(const unsigned char *packet, int bodylen,
-	   const unsigned char *from, struct interface *ifp)
-{
-    int i, nb_tspc;
-    const unsigned char *message;
-    unsigned char type, len;
-    struct anm *anm;
-    anm = find_anm(from, ifp);
-    if(anm == NULL) {
-	unsigned char tspc_init[6];
-	memset(tspc_init, 0, 6);
-	anm = add_anm(from, ifp, tspc_init);
-        if(anm == NULL) {
-	    fprintf(stderr, "Couldn't create ANM.\n");
-            return -1;
-	}
-    }
-    nb_tspc = 0;
-    i = 0;
-    while(i < bodylen) {
-	message = packet + 4 + i;
-	type = message[0];
-	if(type == MESSAGE_PAD1) {
-	    i++;
-	    continue;
-	}
-	len = message[1];
-	if(type == MESSAGE_TSPC) {
-            unsigned char tspc[6];
-	    memcpy(tspc, message + 2, 6);
-	    if(memcmp(anm->last_tspc, tspc, 6) >= 0)
-		return 0;
-	    memcpy(anm->last_tspc, tspc, 6);
-	    nb_tspc++;
-        }
-	i += len + 2;
-    }
-    if(nb_tspc != 1) {
-	fprintf(stderr, "Refuse TS/PC.\n");
-	return 0;
-    }
-    return 1;
-}
-
-int
 check_echo_age(struct timeval *last_echo, struct timeval *now)
 {
     struct timeval deadline;

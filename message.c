@@ -229,15 +229,15 @@ parse_hello_subtlv(const unsigned char *a, int alen,
 
 static int
 parse_ihu_subtlv(const unsigned char *a, int alen,
-                 struct neighbour *neigh,
                  unsigned int *timestamp1_return,
                  unsigned int *timestamp2_return,
-                 int *have_timestamp_return)
+                 int *have_timestamp_return,
+                 int *have_fresh_tspc_echo_return)
 {
     int type, len, i = 0;
     int have_timestamp = 0;
-    int have_echo = 0;
-    unsigned int timestamp1, timestamp2;
+    unsigned int timestamp1 = 0, timestamp2 = 0;
+    int have_fresh_tspc_echo = 0;
 
     while(i < alen) {
         type = a[0];
@@ -272,18 +272,12 @@ parse_ihu_subtlv(const unsigned char *a, int alen,
             unsigned int ts;
             unsigned short pc;
             gettime(&now);
-            have_echo = 1;
             DO_NTOHL(ts, a + i + 2);
             DO_NTOHS(pc, a + i + 6);
             debugf("(echo)TS:%u, PC: %hu.\n" ,ts, pc);
 	    if(check_echo(ts, last_tspc)){
-		neigh->echo_receive_time = now;
-	    } else if(check_echo_age(&neigh->echo_receive_time, &now)){
-		/* Nothing to do. */
-	    } else {
-                fprintf(stderr,
-                        "Received incorrect TSPC-echo sub-TLV on IHU.\n");
-            }
+                have_fresh_tspc_echo = 1;
+	    }
         } else {
             debugf("Received unknown%s IHU sub-TLV %d.\n",
                    (type & 0x80) != 0 ? " mandatory" : "", type);
@@ -293,18 +287,14 @@ parse_ihu_subtlv(const unsigned char *a, int alen,
 
         i += len + 2;
     }
-    if(have_echo){
-	if(!check_echo_age(&neigh->echo_receive_time, &now)){
-	    fprintf(stderr, "Echo has expired.\n");
-	}
-    }
     if(have_timestamp && timestamp1_return && timestamp2_return) {
         *timestamp1_return = timestamp1;
         *timestamp2_return = timestamp2;
     }
-    if(have_timestamp_return) {
+    if(have_timestamp_return)
         *have_timestamp_return = have_timestamp;
-    }
+    if(have_fresh_tspc_echo_return)
+        *have_fresh_tspc_echo_return = have_fresh_tspc_echo;
     return 1;
 }
 
@@ -345,6 +335,67 @@ network_address(int ae, const unsigned char *a, unsigned int len,
                 unsigned char *a_r)
 {
     return network_prefix(ae, -1, 0, a, NULL, len, a_r);
+}
+
+static int
+preparse_tspc(const unsigned char *packet, int bodylen,
+              struct neighbour *neigh, struct interface *ifp)
+{
+    int i, nb_tspc;
+    const unsigned char *message;
+    unsigned char type, len;
+    struct anm *anm;
+    int fresh_echo = 0;
+    anm = find_anm(neigh->address, ifp);
+    if(anm == NULL) {
+	unsigned char tspc_init[6];
+	memset(tspc_init, 0, 6);
+	anm = add_anm(neigh->address, ifp, tspc_init);
+        if(anm == NULL) {
+	    fprintf(stderr, "Couldn't create ANM.\n");
+            return -1;
+	}
+    }
+    nb_tspc = 0;
+    i = 0;
+    while(i < bodylen) {
+	message = packet + 4 + i;
+	type = message[0];
+	if(type == MESSAGE_PAD1) {
+	    i++;
+	    continue;
+	}
+	len = message[1];
+	if(type == MESSAGE_TSPC) {
+            unsigned char tspc[6];
+	    memcpy(tspc, message + 2, 6);
+	    if(memcmp(anm->last_tspc, tspc, 6) >= 0)
+		return 0;
+	    memcpy(anm->last_tspc, tspc, 6);
+	    nb_tspc++;
+        } else if(type == MESSAGE_IHU && !fresh_echo) {
+            int rc;
+            unsigned char address[16];
+            if(len < 6)
+                goto done;
+            rc = network_address(message[2], message + 8, len - 6, address);
+            if(rc < 0)
+                goto done;
+            if(message[2] == 0 || interface_ll_address(ifp, address)) {
+                rc = parse_ihu_subtlv(message + 8 + rc, len - 6 - rc,
+                                      NULL, NULL, NULL, &fresh_echo);
+            }
+        }
+    done:
+	i += len + 2;
+    }
+    if(nb_tspc != 1) {
+	fprintf(stderr, "Refuse TS/PC.\n");
+	return 0;
+    }
+    if(fresh_echo)
+        neigh->echo_receive_time = now;
+    return 1;
 }
 
 void
@@ -410,7 +461,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
 	    return;
 	}
 
-	if(check_tspc(packet, bodylen, neigh->address, ifp) == 0) {
+	if(preparse_tspc(packet, bodylen, neigh, ifp) == 0) {
 	    fprintf(stderr, "Received wrong TS/PC.\n");
 	    return;
 	}
@@ -503,9 +554,9 @@ parse_packet(const unsigned char *from, struct interface *ifp,
                    format_address(address));
             if(message[2] == 0 || interface_ll_address(ifp, address)) {
                 int changed;
-                rc = parse_ihu_subtlv(message + 8 + rc, len - 6 - rc, neigh,
+                rc = parse_ihu_subtlv(message + 8 + rc, len - 6 - rc,
                                       &hello_send_us, &hello_rtt_receive_time,
-                                      NULL);
+                                      NULL, NULL);
                 if(rc < 0)
                     goto done;
                 changed = txcost != neigh->txcost;
