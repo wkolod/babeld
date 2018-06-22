@@ -1165,10 +1165,22 @@ parse_config_line(int c, gnc_t gnc, void *closure,
 	c = parse_key(c, gnc, closure, &key);
 	if(c < -1)
 	    goto fail;
-	if(key->id && key->type) {
-	    add_key(key->id, key->type, key->len, key->value);
+        if(key->id == NULL)
+            goto fail;
+        switch(key->type) {
+        case AUTH_TYPE_SHA1:
+        case AUTH_TYPE_RIPEMD:
+            if(key->len != 20) {
+                free(key);
+                goto fail;
+            }
+            break;
+        default:
             free(key);
+            goto fail;
         }
+        add_key(key->id, key->type, key->len, key->value);
+        free(key);
     } else {
         c = parse_option(c, gnc, closure, token);
         if(c < -1)
