@@ -1161,7 +1161,7 @@ parse_config_line(int c, gnc_t gnc, void *closure,
             goto fail;
         reopen_logfile();
     } else if(strcmp(token, "key") == 0) {
-	struct key *key;
+	struct key *key = NULL;
 	c = parse_key(c, gnc, closure, &key);
 	if(c < -1)
 	    goto fail;
