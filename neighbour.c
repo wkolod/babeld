@@ -34,6 +34,7 @@ THE SOFTWARE.
 #include "interface.h"
 #include "neighbour.h"
 #include "source.h"
+#include "hmac.h"
 #include "route.h"
 #include "message.h"
 #include "resend.h"
@@ -115,9 +116,8 @@ find_neighbour(const unsigned char *address, struct interface *ifp)
     neigh->buf.sin6.sin6_port = htons(protocol_port);
     neigh->buf.sin6.sin6_scope_id = ifp->ifindex;
     memcpy(neigh->buf.ll, ifp->ll[0], 16);
-    neigh->buf.key.id = ifp->buf.key.id;
-    neigh->buf.key.type = ifp->buf.key.type;
-    neigh->buf.key.value = ifp->buf.key.value;
+    if(ifp->buf.key != NULL)
+	neigh->buf.key = retain_key(ifp->buf.key);
     neigh->next = neighs;
     neighs = neigh;
     local_notify_neighbour(neigh, LOCAL_ADD);

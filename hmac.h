@@ -2,9 +2,11 @@
 #define HMAC_TYPE 12
 #define DIGEST_LEN 20
 #define SHA1_BLOCK_SIZE 64
+#define RIPEMD160_BLOCK_SIZE 64
 
 struct key *find_key(const char *id);
-void flush_key(struct key *key);
+struct key *retain_key(struct key *key);
+void release_key(struct key *key);
 struct key *add_key(char *id, int type, unsigned char *value);
 int add_hmac(unsigned char *packet_header, struct buffered *message,
 	     int nb_hmac);

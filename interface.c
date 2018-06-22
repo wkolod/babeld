@@ -314,13 +314,8 @@ interface_up(struct interface *ifp, int up)
 	    memcpy(ifp->buf.ll, ifp->ll[0], 16);
 	else
 	    memset(ifp->buf.ll, 0, 16);
-	if(ifp->conf != NULL) {
-	    if(ifp->conf->key != NULL) {
-		ifp->buf.key.id = ifp->conf->key->id;
-		ifp->buf.key.type = ifp->conf->key->type;
-		ifp->buf.key.value = ifp->conf->key->value;
-	    }
-	}
+	if(ifp->conf != NULL && ifp->conf->key != NULL)
+	    ifp->buf.key = retain_key(ifp->conf->key);
         mtu = kernel_interface_mtu(ifp->name, ifp->ifindex);
         if(mtu < 0) {
             fprintf(stderr, "Warning: couldn't get MTU of interface %s (%d).\n",

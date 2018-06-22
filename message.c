@@ -403,17 +403,17 @@ parse_packet(const unsigned char *from, struct interface *ifp,
         bodylen = packetlen - 4;
     }
 
-    if(&ifp->buf.key != NULL && ifp->buf.key.type != 0) {
+    if(ifp->buf.key != NULL && ifp->buf.key->type != 0) {
 	if(check_hmac(packet, packetlen, bodylen, neigh->address,
 		      to) == 0) {
 	    fprintf(stderr, "Received wrong hmac.\n");
 	    return;
 	}
-    }
 
-    if(check_tspc(packet, bodylen, neigh->address, ifp) == 0){
-        fprintf(stderr, "Received wrong TS/PC.\n");
-        return;
+	if(check_tspc(packet, bodylen, neigh->address, ifp) == 0) {
+	    fprintf(stderr, "Received wrong TS/PC.\n");
+	    return;
+	}
     }
 
     i = 0;
@@ -960,17 +960,18 @@ flushbuf(struct buffered *buf)
     assert(buf->len <= buf->size);
 
     if(buf->len > 0) {
-        add_tspc(buf);
+	if(buf->key != NULL && buf->key->type != 0)
+	    add_tspc(buf);
         debugf("  (flushing %d buffered bytes)\n", buf->len);
         DO_HTONS(packet_header + 2, buf->len);
         fill_rtt_message(buf);
-        if(&buf->key != NULL && buf->key.type != 0) {
-            hmac_space = add_hmac(packet_header, buf, 1);
-            if(hmac_space == -1) {
-                fprintf(stderr, "Add_hmac fail. \n");
-                return;
-            }
-        }
+	if(buf->key != NULL && buf->key->type != 0) {
+	    hmac_space = add_hmac(packet_header, buf, 1);
+	    if(hmac_space == -1) {
+		fprintf(stderr, "Couldn't add HMAC.\n");
+		return;
+	    }
+	}
         rc = babel_send(protocol_socket,
                         packet_header, sizeof(packet_header),
                         buf->buf, (buf->len + hmac_space),
@@ -1013,31 +1014,19 @@ schedule_flush_now(struct buffered *buf)
 static void
 ensure_space(struct buffered *buf, int space)
 {
-    if(&buf->key != NULL) {
-        if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < space) {
-            buf->buf += buf->len;
-            flushbuf(buf);
-        }
-    } else {
-        if(buf->size - (buf->len + TLV_TSPC_LEN) < space) {
-            buf->buf += buf->len;
-            flushbuf(buf);
-        }
-    }
+    if(buf->key != NULL)
+	space += MAX_HMAC_SPACE + TLV_TSPC_LEN;
+    if(buf->size - buf->len < space)
+	flushbuf(buf);
 }
 
 static void
 start_message(struct buffered *buf, int type, int len)
 {
-    if(&buf->key != NULL) {
-        if(buf->size - (buf->len + MAX_HMAC_SPACE + TLV_TSPC_LEN) < len + 2) {
-            flushbuf(buf);
-        }
-    } else {
-        if(buf->size - (buf->len + TLV_TSPC_LEN) < len + 2) {
-            flushbuf(buf);
-        }
-    }
+    int space =
+	buf->key == NULL ? len + 2 : len + 2 + MAX_HMAC_SPACE + TLV_TSPC_LEN;
+    if(buf->size - buf->len < space)
+        flushbuf(buf);
     buf->buf[buf->len++] = type;
     buf->buf[buf->len++] = len;
 }
