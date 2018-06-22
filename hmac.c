@@ -99,8 +99,6 @@ compute_hmac(const unsigned char *src, const unsigned char *dst,
     RIPEMD160_CTX inner_ctx2;
     SHA_CTX outer_ctx;
     RIPEMD160_CTX outer_ctx2;
-    SHA_CTX key_ctx;
-    RIPEMD160_CTX key_ctx2;
 
     unsigned char inner_hash[SHA_DIGEST_LENGTH];
     unsigned char key_hash[SHA_DIGEST_LENGTH];
@@ -108,22 +106,14 @@ compute_hmac(const unsigned char *src, const unsigned char *dst,
     unsigned char outer_key_pad[SHA1_BLOCK_SIZE];
 
     int i;
-    int keylen;
 
     switch(key->type) {
     case 1:
-	keylen = sizeof(key->value);
-	memcpy(key_hash, key->value, keylen);
-	if(keylen > SHA1_BLOCK_SIZE) {
-	    SHA1_Init(&key_ctx);
-	    SHA1_Update(&key_ctx, key->value, keylen);
-	    SHA1_Final(key_hash, &key_ctx);
-	    keylen = SHA_DIGEST_LENGTH;
-	}
-	for(i = 0; i < keylen; i++) {
+	memcpy(key_hash, key->value, SHA_DIGEST_LENGTH);
+	for(i = 0; i < SHA_DIGEST_LENGTH; i++) {
 	    inner_key_pad[i] = key_hash[i]^0x36;
 	}
-	for(i = keylen; i < SHA1_BLOCK_SIZE; i++) {
+	for(i = SHA_DIGEST_LENGTH; i < SHA1_BLOCK_SIZE; i++) {
 	    inner_key_pad[i] = 0x36;
 	}
 	SHA1_Init(&inner_ctx);
@@ -134,10 +124,10 @@ compute_hmac(const unsigned char *src, const unsigned char *dst,
 	SHA1_Update(&inner_ctx, body, bodylen);
 	SHA1_Final(inner_hash, &inner_ctx);
 
-	for(i = 0; i < keylen; i++) {
+	for(i = 0; i < SHA_DIGEST_LENGTH; i++) {
 	    outer_key_pad[i] = key_hash[i]^0x5c;
 	}
-	for(i = keylen; i < SHA1_BLOCK_SIZE; i++) {
+	for(i = SHA_DIGEST_LENGTH; i < SHA1_BLOCK_SIZE; i++) {
 	    outer_key_pad[i] = 0x5c;
 	}
 	SHA1_Init(&outer_ctx);
@@ -146,18 +136,11 @@ compute_hmac(const unsigned char *src, const unsigned char *dst,
 	SHA1_Final(hmac, &outer_ctx);
 	return SHA_DIGEST_LENGTH;
     case 2:
-	keylen = sizeof(key->value);
-	memcpy(key_hash, key->value, keylen);
-	if(keylen > RIPEMD160_BLOCK_SIZE) {
-	    RIPEMD160_Init(&key_ctx2);
-	    RIPEMD160_Update(&key_ctx2, key->value, keylen);
-	    RIPEMD160_Final(key_hash, &key_ctx2);
-	    keylen = RIPEMD160_DIGEST_LENGTH;
-	}
-	for(i = 0; i < keylen; i++) {
+	memcpy(key_hash, key->value, RIPEMD160_DIGEST_LENGTH);
+	for(i = 0; i < RIPEMD160_DIGEST_LENGTH; i++) {
 	    inner_key_pad[i] = key_hash[i]^0x36;
 	}
-	for(i = keylen; i < RIPEMD160_BLOCK_SIZE; i++) {
+	for(i = RIPEMD160_DIGEST_LENGTH; i < RIPEMD160_BLOCK_SIZE; i++) {
 	    inner_key_pad[i] = 0x36;
 	}
 	RIPEMD160_Init(&inner_ctx2);
@@ -168,10 +151,10 @@ compute_hmac(const unsigned char *src, const unsigned char *dst,
 	RIPEMD160_Update(&inner_ctx2, body, bodylen);
 	RIPEMD160_Final(inner_hash, &inner_ctx2);
 
-	for(i = 0; i < keylen; i++) {
+	for(i = 0; i < RIPEMD160_DIGEST_LENGTH; i++) {
 	    outer_key_pad[i] = key_hash[i]^0x5c;
 	}
-	for(i = keylen; i < RIPEMD160_BLOCK_SIZE; i++) {
+	for(i = RIPEMD160_DIGEST_LENGTH; i < RIPEMD160_BLOCK_SIZE; i++) {
 	    outer_key_pad[i] = 0x5c;
 	}
 	RIPEMD160_Init(&outer_ctx2);
