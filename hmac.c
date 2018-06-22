@@ -88,7 +88,6 @@ add_key(char *id, int type, int len, unsigned char *value)
     key->value = value;
 
     keys[numkeys++] = key;
-    numkeys++;
     return key;
 }
 
