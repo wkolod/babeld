@@ -49,7 +49,7 @@ release_key(struct key *key)
 }
 
 struct key *
-add_key(char *id, int type, unsigned char *value)
+add_key(char *id, int type, int len, unsigned char *value)
 {
     struct key *key;
 
@@ -62,6 +62,7 @@ add_key(char *id, int type, unsigned char *value)
 	    return NULL;
 	}
 	key->type = type;
+        key->len = len;
 	key->value = value;
 	return key;
     }
@@ -83,6 +84,7 @@ add_key(char *id, int type, unsigned char *value)
 	return NULL;
     key->id = id;
     key->type = type;
+    key->len = len;
     key->value = value;
 
     keys[numkeys++] = key;

@@ -5,7 +5,7 @@
 struct key *find_key(const char *id);
 struct key *retain_key(struct key *key);
 void release_key(struct key *key);
-struct key *add_key(char *id, int type, unsigned char *value);
+struct key *add_key(char *id, int type, int len, unsigned char *value);
 int add_hmac(unsigned char *packet_header, struct buffered *message,
 	     int nb_hmac);
 int check_echo_age(struct timeval *last_echo, struct timeval *now);

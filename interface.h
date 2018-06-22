@@ -38,6 +38,7 @@ struct buffered_update {
 struct key {
     char *id;
     int type;
+    int len;
     unsigned char *value;
     unsigned short ref_count;
 };

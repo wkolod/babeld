@@ -324,28 +324,31 @@ get_interface_type(int c, int *type_r, gnc_t gnc, void *closure)
 }
 
 static int
-gethex(int c, unsigned char **value_r, gnc_t gnc, void *closure)
+gethex(int c, unsigned char **value_r, int *len_r, gnc_t gnc, void *closure)
 {
     char *t;
     unsigned char *value;
-    int rc;
+    int len, rc;
     c = getword(c, &t, gnc, closure);
     if(c < -1)
         return c;
-    if(strlen(t) % 2 != 0) {
+    len = strlen(t);
+    if(len % 2 != 0) {
 	free(t);
 	return -2;
     }
-    value = malloc(strlen(t)/2);
-    rc = fromhex(value, t, strlen(t));
+    value = malloc(len / 2);
+    if(value == NULL)
+        return -2;
+
+    rc = fromhex(value, t, len);
     free(t);
     if(rc < 0) {
 	free(value);
 	return -2;
     }
     *value_r = value;
-    if(*value_r == NULL)
-	return -2;
+    *len_r = len / 2;
     return c;
 }
 
@@ -735,7 +738,7 @@ parse_key(int c, gnc_t gnc, void *closure, struct key **key_return)
 	    }
 	    free(auth_type);
 	} else if(strcmp(token, "value") == 0) {
-	    c = gethex(c, &key->value, gnc, closure);
+	    c = gethex(c, &key->value, &key->len, gnc, closure);
 	    if(c < -1 || key->value == NULL)
 		goto error;
 	} else {
@@ -1162,8 +1165,10 @@ parse_config_line(int c, gnc_t gnc, void *closure,
 	c = parse_key(c, gnc, closure, &key);
 	if(c < -1)
 	    goto fail;
-	if(key->id && key->type)
-	    add_key(key->id, key->type, key->value);
+	if(key->id && key->type) {
+	    add_key(key->id, key->type, key->len, key->value);
+            free(key);
+        }
     } else {
         c = parse_option(c, gnc, closure, token);
         if(c < -1)
