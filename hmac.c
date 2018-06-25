@@ -128,8 +128,10 @@ compute_hmac(const unsigned char *src, const unsigned char *dst,
     unsigned char inner_key_pad[SHA1_BLOCK_SIZE];
     unsigned char outer_key_pad[SHA1_BLOCK_SIZE];
 
+    unsigned short port;
     int i;
 
+    DO_HTONS(&port, (unsigned short)protocol_port);
     switch(key->type) {
     case 1:
 	memcpy(key_hash, key->value, SHA_DIGEST_LENGTH);
@@ -141,8 +143,13 @@ compute_hmac(const unsigned char *src, const unsigned char *dst,
 	}
 	SHA1_Init(&inner_ctx);
 	SHA1_Update(&inner_ctx, inner_key_pad, SHA1_BLOCK_SIZE);
+
+	/* Hashing the pseudo header. */
 	SHA1_Update(&inner_ctx, dst, 16);
+	SHA1_Update(&inner_ctx, &port, 2);
 	SHA1_Update(&inner_ctx, src, 16);
+	SHA1_Update(&inner_ctx, &port, 2);
+
 	SHA1_Update(&inner_ctx, packet_header, 4);
 	SHA1_Update(&inner_ctx, body, bodylen);
 	SHA1_Final(inner_hash, &inner_ctx);
@@ -168,8 +175,13 @@ compute_hmac(const unsigned char *src, const unsigned char *dst,
 	}
 	RIPEMD160_Init(&inner_ctx2);
 	RIPEMD160_Update(&inner_ctx2, inner_key_pad, RIPEMD160_BLOCK_SIZE);
+
+	/* Hashing the pseudo header. */
 	RIPEMD160_Update(&inner_ctx2, dst, 16);
+	RIPEMD160_Update(&inner_ctx2, &port, 2);
 	RIPEMD160_Update(&inner_ctx2, src, 16);
+	RIPEMD160_Update(&inner_ctx2, &port, 2);
+
 	RIPEMD160_Update(&inner_ctx2, packet_header, 4);
 	RIPEMD160_Update(&inner_ctx2, body, bodylen);
 	RIPEMD160_Final(inner_hash, &inner_ctx2);
