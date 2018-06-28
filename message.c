@@ -42,7 +42,6 @@ THE SOFTWARE.
 #include "message.h"
 #include "configuration.h"
 #include "hmac.h"
-#include "anm.h"
 
 unsigned char packet_header[4] = {42, 2};
 
@@ -231,13 +230,11 @@ static int
 parse_ihu_subtlv(const unsigned char *a, int alen,
                  unsigned int *timestamp1_return,
                  unsigned int *timestamp2_return,
-                 int *have_timestamp_return,
-                 int *have_fresh_tspc_echo_return)
+                 int *have_timestamp_return)
 {
     int type, len, i = 0;
     int have_timestamp = 0;
     unsigned int timestamp1 = 0, timestamp2 = 0;
-    int have_fresh_tspc_echo = 0;
 
     while(i < alen) {
         type = a[0];
@@ -268,16 +265,6 @@ parse_ihu_subtlv(const unsigned char *a, int alen,
                         "Received incorrect RTT sub-TLV on IHU.\n");
                 /* But don't break. */
             }
-        } else if(type == SUBTLV_ECHO){
-            unsigned int ts;
-            unsigned short pc;
-            gettime(&now);
-            DO_NTOHL(ts, a + i + 2);
-            DO_NTOHS(pc, a + i + 6);
-            debugf("(echo)TS:%u, PC: %hu.\n" ,ts, pc);
-	    if(check_echo(ts, last_tspc)){
-                have_fresh_tspc_echo = 1;
-	    }
         } else {
             debugf("Received unknown%s IHU sub-TLV %d.\n",
                    (type & 0x80) != 0 ? " mandatory" : "", type);
@@ -293,8 +280,6 @@ parse_ihu_subtlv(const unsigned char *a, int alen,
     }
     if(have_timestamp_return)
         *have_timestamp_return = have_timestamp;
-    if(have_fresh_tspc_echo_return)
-        *have_fresh_tspc_echo_return = have_fresh_tspc_echo;
     return 1;
 }
 
@@ -320,7 +305,7 @@ parse_other_subtlv(const unsigned char *a, int alen)
             return -1;
         }
 
-        if((type & 0x80) != 0) {
+	if((type & 0x80) != 0) {
             debugf("Received unknown mandatory sub-TLV %d.\n", type);
             return -1;
         }
@@ -338,25 +323,14 @@ network_address(int ae, const unsigned char *a, unsigned int len,
 }
 
 static int
-preparse_tspc(const unsigned char *packet, int bodylen,
+preparse_packet(const unsigned char *packet, int bodylen,
               struct neighbour *neigh, struct interface *ifp)
 {
-    int i, nb_tspc;
+    int i, nb_pc;
     const unsigned char *message;
     unsigned char type, len;
-    struct anm *anm;
-    int fresh_echo = 0;
-    anm = find_anm(neigh->address, ifp);
-    if(anm == NULL) {
-	unsigned char tspc_init[6];
-	memset(tspc_init, 0, 6);
-	anm = add_anm(neigh->address, ifp, tspc_init);
-        if(anm == NULL) {
-	    fprintf(stderr, "Couldn't create ANM.\n");
-            return -1;
-	}
-    }
-    nb_tspc = 0;
+
+    nb_pc = 0;
     i = 0;
     while(i < bodylen) {
 	message = packet + 4 + i;
@@ -374,35 +348,36 @@ preparse_tspc(const unsigned char *packet, int bodylen,
             fprintf(stderr, "Received truncated message.\n");
             break;
         }
-	if(type == MESSAGE_TSPC) {
-            unsigned char tspc[6];
-	    memcpy(tspc, message + 2, 6);
-	    if(memcmp(anm->last_tspc, tspc, 6) >= 0)
+	if(type == MESSAGE_PC) {
+            unsigned char pc[4];
+	    unsigned char sender_nonce[8];
+	    memcpy(pc, message + 2, 4);
+	    memcpy(sender_nonce, message + 6, 8);
+	    if(neigh->pc == NULL || neigh->crypto_nonce == NULL ||
+	       memcmp(neigh->pc, pc, 4) >= 0 ||
+	       memcmp(neigh->crypto_nonce, sender_nonce, 8) != 0) {
+		send_challenge_req(neigh, ifp->nonce);
 		return 0;
-	    memcpy(anm->last_tspc, tspc, 6);
-	    nb_tspc++;
-        } else if(type == MESSAGE_IHU && !fresh_echo) {
-            int rc;
-            unsigned char address[16];
-            if(len < 6)
-                goto done;
-            rc = network_address(message[2], message + 8, len - 6, address);
-            if(rc < 0)
-                goto done;
-            if(message[2] == 0 || interface_ll_address(ifp, address)) {
-                rc = parse_ihu_subtlv(message + 8 + rc, len - 6 - rc,
-                                      NULL, NULL, NULL, &fresh_echo);
-            }
-        }
-    done:
+	    }
+	    memcpy(neigh->pc, pc, 4);
+	    memcpy(neigh->crypto_nonce, sender_nonce, 8);
+	    nb_pc++;
+        } else if(type == MESSAGE_CHALLENGE_RESPONSE) {
+	    unsigned char pc[4];
+	    unsigned char mynonce[8];
+	    memcpy(pc, message + 2, 4);
+	    memcpy(mynonce, message + 6, 8);
+	    if(memcmp(ifp->nonce, mynonce, 8)) {
+		fprintf(stderr, "Didn't complete the challenge.\n");
+		return 0;
+	    }
+	}
 	i += len + 2;
     }
-    if(nb_tspc != 1) {
-	fprintf(stderr, "Refuse TS/PC.\n");
+    if(nb_pc != 1) {
+	fprintf(stderr, "Refuse PC.\n");
 	return 0;
     }
-    if(fresh_echo)
-        neigh->echo_receive_time = now;
     return 1;
 }
 
@@ -469,8 +444,8 @@ parse_packet(const unsigned char *from, struct interface *ifp,
 	    return;
 	}
 
-	if(preparse_tspc(packet, bodylen, neigh, ifp) == 0) {
-	    fprintf(stderr, "Received wrong TS/PC.\n");
+	if(preparse_packet(packet, bodylen, neigh, ifp) == 0) {
+	    fprintf(stderr, "Received wrong PC or failed the challenge.\n");
 	    return;
 	}
     }
@@ -518,6 +493,10 @@ parse_packet(const unsigned char *from, struct interface *ifp,
             if(rc < 0)
                 goto done;
             /* Nothing right now */
+	} else if(type == MESSAGE_CHALLENGE_REQUEST) {
+	    unsigned char crypto_nonce[8];
+	    memcpy(crypto_nonce, message + 4, 8);
+	    send_challenge_reply(neigh, crypto_nonce);
         } else if(type == MESSAGE_HELLO) {
             unsigned short seqno, interval;
             int unicast, changed, have_timestamp, rc;
@@ -564,7 +543,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
                 int changed;
                 rc = parse_ihu_subtlv(message + 8 + rc, len - 6 - rc,
                                       &hello_send_us, &hello_rtt_receive_time,
-                                      NULL, NULL);
+                                      NULL);
                 if(rc < 0)
                     goto done;
                 changed = txcost != neigh->txcost;
@@ -932,8 +911,8 @@ parse_packet(const unsigned char *from, struct interface *ifp,
                    format_eui64(router_id), seqno);
             handle_request(neigh, prefix, plen, src_prefix, src_plen,
                            hopc, seqno, router_id);
-        } else if(type == MESSAGE_TSPC) {
-            /* We're dealing with the TS/PC message in check_tspc(). */
+        } else if(type == MESSAGE_PC || type == MESSAGE_CHALLENGE_RESPONSE) {
+            /* We're dealing with these in preparse_packet(). */
         } else {
             debugf("Received unknown packet type %d from %s on %s.\n",
                    type, format_address(from), ifp->name);
@@ -1020,7 +999,7 @@ flushbuf(struct buffered *buf)
 
     if(buf->len > 0) {
 	if(buf->key != NULL && buf->key->type != 0)
-	    add_tspc(buf);
+	    send_pc(buf);
         debugf("  (flushing %d buffered bytes)\n", buf->len);
         DO_HTONS(packet_header + 2, buf->len);
         fill_rtt_message(buf);
@@ -1128,20 +1107,18 @@ accumulate_bytes(struct buffered *buf,
 }
 
 void
-add_tspc(struct buffered *buf)
+send_pc(struct buffered *buf)
 {
-    struct timespec realtime;
-    unsigned short last_pc;
-    start_message(buf, MESSAGE_TSPC, 6);
-    clock_gettime(CLOCK_REALTIME, &realtime);
-    DO_HTONL(last_tspc, realtime.tv_sec);
-    DO_NTOHS(last_pc, last_tspc + 4);
+    unsigned int last_pc = 0;
+    start_message(buf, MESSAGE_PC, 4);
+    /* DO_NTOHL(last_pc, ifp->pc); */
     last_pc++;
-    DO_HTONS(last_tspc + 4, last_pc);
-    accumulate_bytes(buf, last_tspc, 6);
-    debugf("adding ts/ps with ts: %ld and pc: %hu \n",
-           realtime.tv_sec, last_pc);
-    end_message(buf, MESSAGE_TSPC, 6);
+    /* if(last_pc == 0)
+       ifp->nonce = random(); */
+    /* DO_HTONL(ifp->pc, last_pc); */
+    accumulate_int(buf, last_pc); /* ifp->nonce instead of last_pc */
+    debugf("adding pc: %hu \n", last_pc);
+    end_message(buf, MESSAGE_PC, 4);
 }
 
 void
@@ -1154,6 +1131,26 @@ send_ack(struct neighbour *neigh, unsigned short nonce, unsigned short interval)
     end_message(&neigh->buf, MESSAGE_ACK, 2);
     /* Roughly yields a value no larger than 3/2, so this meets the deadline */
     schedule_flush_ms(&neigh->buf, roughly(interval * 6));
+}
+
+void
+send_challenge_req(struct neighbour *neigh, unsigned char *crypto_nonce)
+{
+    printf("Sending challenge request to %s on %s.\n",
+	   format_address(neigh->address), neigh->ifp->name);
+    start_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, 8);
+    accumulate_bytes(&neigh->buf, crypto_nonce, 8);
+    end_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, 8);
+}
+
+void
+send_challenge_reply(struct neighbour *neigh, unsigned char *crypto_nonce)
+{
+    debugf("Sending challenge reply to %s on %s.\n",
+	   format_address(neigh->address), neigh->ifp->name);
+    start_message(&neigh->buf, MESSAGE_CHALLENGE_RESPONSE, 8);
+    accumulate_bytes(&neigh->buf, crypto_nonce, 8);
+    end_message(&neigh->buf, MESSAGE_CHALLENGE_RESPONSE, 8);
 }
 
 void
@@ -1751,12 +1748,12 @@ send_self_update(struct interface *ifp)
 void
 buffer_ihu(struct interface *ifp, struct buffered *buf, unsigned short rxcost,
            unsigned short interval, const unsigned char *address,
-           int rtt_data, int echo, unsigned int t1, unsigned int t2)
+           int rtt_data, unsigned int t1, unsigned int t2)
 {
     int msglen, ll;
 
     ll = linklocal(address);
-    msglen = (ll ? 14 : 200) + (rtt_data ? 10 : 0) + (echo ? 8 : 0);
+    msglen = (ll ? 14 : 200) + (rtt_data ? 10 : 0);
 
     start_message(buf, MESSAGE_IHU, msglen);
     accumulate_byte(buf, ll ? 3 : 2);
@@ -1773,14 +1770,6 @@ buffer_ihu(struct interface *ifp, struct buffered *buf, unsigned short rxcost,
         accumulate_int(buf, t1);
         accumulate_int(buf, t2);
     }
-    if(echo) {
-        struct anm *anm;
-        debugf("add echo\n");
-        anm = find_anm(address, ifp);
-        accumulate_byte(buf, SUBTLV_ECHO);
-	accumulate_byte(buf, 6);
-        accumulate_bytes(buf, anm->last_tspc, 6);
-    }
     end_message(buf, MESSAGE_IHU, msglen);
 }
 
@@ -1790,8 +1779,6 @@ send_ihu(struct neighbour *neigh, struct interface *ifp)
 {
     int rxcost, interval;
     int send_rtt_data;
-    int send_echo = 0;
-    struct anm *anm;
 
     if(neigh == NULL && ifp == NULL) {
         struct interface *ifp_aux;
@@ -1818,10 +1805,6 @@ send_ihu(struct neighbour *neigh, struct interface *ifp)
     if(!if_up(ifp))
         return;
 
-    anm = find_anm(neigh->address, ifp);
-    if(anm != NULL)
-	send_echo = 1;
-
     rxcost = neighbour_rxcost(neigh);
     interval = (ifp->hello_interval * 3 + 9) / 10;
 
@@ -1840,7 +1823,7 @@ send_ihu(struct neighbour *neigh, struct interface *ifp)
     }
 
     buffer_ihu(ifp, &ifp->buf, rxcost, interval, neigh->address,
-               send_rtt_data, send_echo, neigh->hello_send_us,
+               send_rtt_data, neigh->hello_send_us,
                time_us(neigh->hello_rtt_receive_time));
 
 }

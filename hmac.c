@@ -36,7 +36,6 @@ THE SOFTWARE.
 #include "hmac.h"
 #include "configuration.h"
 #include "kernel.h"
-#include "anm.h"
 #include "message.h"
 
 struct key **keys = NULL;
@@ -254,30 +253,6 @@ compare_hmac(const unsigned char *src, const unsigned char *dst,
 	if(memcmp(true_hmac, hmac, hmaclen) == 0)
             return 1;
     }
-    return 0;
-}
-
-int
-check_echo_age(struct timeval *last_echo, struct timeval *now)
-{
-    struct timeval deadline;
-    timeval_add_msec(&deadline, last_echo, 128 * 1000);
-    return timeval_compare(now, &deadline) <= 0;
-}
-
-int
-check_echo(unsigned int ts, unsigned char *last_tspc)
-{
-    unsigned int first;
-    unsigned int last = 0;
-    DO_NTOHL(last, last_tspc);
-    first = last - 30;
-    if(first < 0)
-	first = 0;
-    if(ts >= first && ts <= last) {
-	return 1;
-    }
-    fprintf(stderr, "Invalid echo.\n");
     return 0;
 }
 

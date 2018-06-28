@@ -30,7 +30,5 @@ void release_key(struct key *key);
 struct key *add_key(char *id, int type, int len, unsigned char *value);
 int add_hmac(unsigned char *packet_header, struct buffered *message,
 	     int nb_hmac);
-int check_echo_age(struct timeval *last_echo, struct timeval *now);
-int check_echo(unsigned int ts, unsigned char *last_tspc);
 int check_hmac(const unsigned char *packet, int packetlen, int bodylen,
 	       const unsigned char *addr_src, const unsigned char *addr_dst);

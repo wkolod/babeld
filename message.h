@@ -37,11 +37,13 @@ THE SOFTWARE.
 #define MESSAGE_REQUEST 9
 #define MESSAGE_MH_REQUEST 10
 /* 11 and 12 are for authentication */
-#define MESSAGE_TSPC 11
+#define MESSAGE_PC 11
 #define MESSAGE_HMAC 12
 #define MESSAGE_UPDATE_SRC_SPECIFIC 13
 #define MESSAGE_REQUEST_SRC_SPECIFIC 14
 #define MESSAGE_MH_REQUEST_SRC_SPECIFIC 15
+#define MESSAGE_CHALLENGE_REQUEST 16
+#define MESSAGE_CHALLENGE_RESPONSE 17
 
 /* Protocol extension through sub-TLVs. */
 #define SUBTLV_PAD1 0
@@ -63,9 +65,11 @@ void parse_packet(const unsigned char *from, struct interface *ifp,
 		  const unsigned char *to);
 void flushbuf(struct buffered *buf);
 void flushupdates(struct interface *ifp);
-void add_tspc(struct buffered *buf);
+void send_pc(struct buffered *buf);
 void send_ack(struct neighbour *neigh, unsigned short nonce,
               unsigned short interval);
+void send_challenge_req(struct neighbour *neigh, unsigned char *crypto_nonce);
+void send_challenge_reply(struct neighbour *neigh, unsigned char *crypto_nonce);
 void send_hello_noihu(struct interface *ifp, unsigned interval);
 void send_hello(struct interface *ifp);
 void flush_unicast(int dofree);
