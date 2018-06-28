@@ -51,7 +51,7 @@ unsigned short myseqno = 0;
 struct timeval seqno_time = {0, 0};
 
 unsigned char last_pc[4] = {0};
-unsigned char last_nonce[256] = {0};
+unsigned char last_nonce[32] = {0};
 int nonce_len = 10;
 
 extern const unsigned char v4prefix[16];
@@ -351,27 +351,27 @@ preparse_packet(const unsigned char *packet, int bodylen,
             break;
         }
 	if(type == MESSAGE_CRYPTO_SEQNO) {
-            unsigned char pc[4];
-	    unsigned char sender_nonce[neigh->nonce_len];
-	    memcpy(pc, message + 2, 4);
-	    memcpy(sender_nonce, message + 6, neigh->nonce_len);
-	    if(neigh->pc == NULL || neigh->crypto_nonce == NULL ||
-	       memcmp(neigh->crypto_nonce, sender_nonce, neigh->nonce_len) != 0) {
+	    if(!neigh->have_nonce) {
 		send_challenge_req(neigh);
 		return 0;
-	    } else if(memcmp(neigh->pc, pc, 4) >= 0 ){
+	    } else if(len != neigh->nonce_len) {
+		send_challenge_req(neigh);
+		return 0;
+	    } else if (memcmp(neigh->crypto_nonce, message + 6,
+			      neigh->nonce_len)){
+		send_challenge_req(neigh);
+		return 0;
+	    } else if(memcmp(neigh->pc, message + 2, 4) >= 0 ){
 		fprintf(stderr, "PC too old.\n");
 		return 0;
 	    }
-	    memcpy(neigh->pc, pc, 4);
-	    memcpy(neigh->crypto_nonce, sender_nonce, neigh->nonce_len);
+	    memcpy(neigh->pc, message + 2, 4);
 	    nb_pc++;
         } else if(type == MESSAGE_CHALLENGE_RESPONSE) {
-	    unsigned char pc[4];
-	    unsigned char mynonce[nonce_len];
-	    memcpy(pc, message + 2, 4);
-	    memcpy(mynonce, message + 6, nonce_len);
-	    if(memcmp(last_nonce, mynonce, nonce_len)) {
+	    if(len != 10) {
+		fprintf(stderr, "Didn't complete the challenge.\n");
+		return 0;
+	    } else if(memcmp(neigh->challenge_nonce, message + 2, 10)) {
 		fprintf(stderr, "Didn't complete the challenge.\n");
 		return 0;
 	    }
@@ -1137,13 +1137,12 @@ send_ack(struct neighbour *neigh, unsigned short nonce, unsigned short interval)
 void
 send_challenge_req(struct neighbour *neigh)
 {
-    unsigned char random_nonce[nonce_len];
     debugf("Sending challenge request to %s on %s.\n",
 	   format_address(neigh->address), neigh->ifp->name);
-    read_random_bytes(random_nonce, nonce_len);
-    start_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, nonce_len);
-    accumulate_bytes(&neigh->buf, random_nonce, nonce_len);
-    end_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, nonce_len);
+    read_random_bytes(neigh->challenge_nonce, 10);
+    start_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, 10);
+    accumulate_bytes(&neigh->buf, neigh->challenge_nonce, 10);
+    end_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, 10);
     schedule_flush_now(&neigh->buf);
 }
 
