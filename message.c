@@ -328,11 +328,13 @@ static int
 preparse_packet(const unsigned char *packet, int bodylen,
               struct neighbour *neigh, struct interface *ifp)
 {
-    int i, nb_pc;
+    int i;
     const unsigned char *message;
     unsigned char type, len;
+    int challenge_success = 0;
+    int have_nonce = 0, nonce_len;
+    unsigned char pc[4], nonce[256];
 
-    nb_pc = 0;
     i = 0;
     while(i < bodylen) {
 	message = packet + 4 + i;
@@ -353,28 +355,21 @@ preparse_packet(const unsigned char *packet, int bodylen,
 	if(type == MESSAGE_CRYPTO_SEQNO) {
             debugf("Received crypto seqno from %s.\n",
                    format_address(neigh->address));
-	    if(!neigh->have_nonce || len != neigh->nonce_len
-	       || memcmp(neigh->crypto_nonce, message + 6,
-			 neigh->nonce_len) != 0) {
-		break;
-	    } else if(memcmp(neigh->pc, message + 2, 4) >= 0) {
-		fprintf(stderr, "PC too old.\n");
-		return 0;
-	    }
-	    memcpy(neigh->pc, message + 2, 4);
-	    memcpy(neigh->crypto_nonce, message + 6, neigh->nonce_len);
-	    neigh->have_nonce = 1;
-	    nb_pc++;
+            memcpy(pc, message + 2, 4);
+            nonce_len = len - 4;
+            memcpy(nonce, message + 6, len - 4);
+            have_nonce = 1;
         } else if(type == MESSAGE_CHALLENGE_RESPONSE) {
             debugf("Received challenge response from %s.\n",
                    format_address(neigh->address));
 	    gettime(&now);
-	    if(len != 10
-	       || memcmp(neigh->challenge_nonce, message + 2, 10) != 0
-	       || timeval_compare(&now, &neigh->challenge_deadline) > 0) {
-		fprintf(stderr, "Didn't complete the challenge.\n");
-		return 0;
-	    }
+	    if(len == 10 &&
+               memcmp(neigh->challenge_nonce, message + 2, 10) == 0 &&
+	       timeval_compare(&now, &neigh->challenge_deadline) < 0) {
+                challenge_success = 1;
+            } else {
+                debugf("Challenge failed.\n");
+            }
 	} else if(type == MESSAGE_CHALLENGE_REQUEST) {
             debugf("Received challenge request from %s.\n",
                    format_address(neigh->address));
@@ -384,11 +379,32 @@ preparse_packet(const unsigned char *packet, int bodylen,
 	}
 	i += len + 2;
     }
-    if(nb_pc < 1) {
-	send_challenge_req(neigh);
-	return 0;
+
+    if(!have_nonce) {
+        debugf("No PC in packet.\n");
+        return 0;
     }
-    return 1;
+
+    if(neigh->have_nonce &&
+       neigh->nonce_len == nonce_len &&
+       memcmp(nonce, neigh->crypto_nonce, nonce_len) == 0) {
+        if(memcmp(neigh->pc, pc, 4) < 0) {
+            memcpy(neigh->pc, pc, 4);
+            return 1;
+        } else {
+            debugf("Out of order PC.\n");
+            return 0;
+        }
+    } else if(challenge_success) {
+        neigh->nonce_len = nonce_len;
+        memcpy(neigh->crypto_nonce, nonce, nonce_len);
+        memcpy(neigh->pc, pc, 4);
+        neigh->have_nonce = 1;
+        return 1;
+    } else {
+        send_challenge_req(neigh);
+        return 0;
+    }
 }
 
 void
