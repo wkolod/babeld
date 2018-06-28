@@ -379,7 +379,7 @@ preparse_packet(const unsigned char *packet, int bodylen,
             debugf("Received challenge request from %s.\n",
                    format_address(neigh->address));
 	    unsigned char crypto_nonce[len];
-	    memcpy(crypto_nonce, message + 4, len);
+	    memcpy(crypto_nonce, message + 2, len);
 	    send_challenge_reply(neigh, crypto_nonce, len);
 	}
 	i += len + 2;
