@@ -69,7 +69,7 @@ void send_crypto_seqno(struct buffered *buf);
 void send_ack(struct neighbour *neigh, unsigned short nonce,
               unsigned short interval);
 void send_challenge_req(struct neighbour *neigh);
-void send_challenge_reply(struct neighbour *neigh, unsigned char *crypto_nonce);
+void send_challenge_reply(struct neighbour *neigh, unsigned char *crypto_nonce, int len);
 void send_hello_noihu(struct interface *ifp, unsigned interval);
 void send_hello(struct interface *ifp);
 void flush_unicast(int dofree);

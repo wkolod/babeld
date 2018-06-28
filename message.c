@@ -352,11 +352,11 @@ preparse_packet(const unsigned char *packet, int bodylen,
         }
 	if(type == MESSAGE_CRYPTO_SEQNO) {
             unsigned char pc[4];
-	    unsigned char sender_nonce[8];
+	    unsigned char sender_nonce[neigh->nonce_len];
 	    memcpy(pc, message + 2, 4);
-	    memcpy(sender_nonce, message + 6, 8);
+	    memcpy(sender_nonce, message + 6, neigh->nonce_len);
 	    if(neigh->pc == NULL || neigh->crypto_nonce == NULL ||
-	       memcmp(neigh->crypto_nonce, sender_nonce, 8) != 0) {
+	       memcmp(neigh->crypto_nonce, sender_nonce, neigh->nonce_len) != 0) {
 		send_challenge_req(neigh);
 		return 0;
 	    } else if(memcmp(neigh->pc, pc, 4) >= 0 ){
@@ -364,14 +364,14 @@ preparse_packet(const unsigned char *packet, int bodylen,
 		return 0;
 	    }
 	    memcpy(neigh->pc, pc, 4);
-	    memcpy(neigh->crypto_nonce, sender_nonce, 8);
+	    memcpy(neigh->crypto_nonce, sender_nonce, neigh->nonce_len);
 	    nb_pc++;
         } else if(type == MESSAGE_CHALLENGE_RESPONSE) {
 	    unsigned char pc[4];
-	    unsigned char mynonce[8];
+	    unsigned char mynonce[nonce_len];
 	    memcpy(pc, message + 2, 4);
-	    memcpy(mynonce, message + 6, 8);
-	    if(memcmp(last_nonce, mynonce, 8)) {
+	    memcpy(mynonce, message + 6, nonce_len);
+	    if(memcmp(last_nonce, mynonce, nonce_len)) {
 		fprintf(stderr, "Didn't complete the challenge.\n");
 		return 0;
 	    }
@@ -498,9 +498,9 @@ parse_packet(const unsigned char *from, struct interface *ifp,
                 goto done;
             /* Nothing right now */
 	} else if(type == MESSAGE_CHALLENGE_REQUEST) {
-	    unsigned char crypto_nonce[8];
-	    memcpy(crypto_nonce, message + 4, 8);
-	    send_challenge_reply(neigh, crypto_nonce);
+	    unsigned char crypto_nonce[len];
+	    memcpy(crypto_nonce, message + 4, len);
+	    send_challenge_reply(neigh, crypto_nonce, len);
         } else if(type == MESSAGE_HELLO) {
             unsigned short seqno, interval;
             int unicast, changed, have_timestamp, rc;
@@ -1113,13 +1113,13 @@ accumulate_bytes(struct buffered *buf,
 void
 send_crypto_seqno(struct buffered *buf)
 {
-    start_message(buf, MESSAGE_CRYPTO_SEQNO, 12);
+    start_message(buf, MESSAGE_CRYPTO_SEQNO, nonce_len + 4);
     (*last_pc)++;
     if(last_pc == 0)
 	read_random_bytes(last_nonce, nonce_len);
     accumulate_int(buf, *last_pc);
     accumulate_bytes(buf, last_nonce, nonce_len);
-    end_message(buf, MESSAGE_CRYPTO_SEQNO, 12);
+    end_message(buf, MESSAGE_CRYPTO_SEQNO, nonce_len + 4);
 }
 
 void
@@ -1137,24 +1137,25 @@ send_ack(struct neighbour *neigh, unsigned short nonce, unsigned short interval)
 void
 send_challenge_req(struct neighbour *neigh)
 {
-    unsigned char random_nonce[8];
+    unsigned char random_nonce[nonce_len];
     debugf("Sending challenge request to %s on %s.\n",
 	   format_address(neigh->address), neigh->ifp->name);
-    read_random_bytes(random_nonce, 8);
-    start_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, 8);
-    accumulate_bytes(&neigh->buf, random_nonce, 8);
-    end_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, 8);
+    read_random_bytes(random_nonce, nonce_len);
+    start_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, nonce_len);
+    accumulate_bytes(&neigh->buf, random_nonce, nonce_len);
+    end_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, nonce_len);
     schedule_flush_now(&neigh->buf);
 }
 
 void
-send_challenge_reply(struct neighbour *neigh, unsigned char *crypto_nonce)
+send_challenge_reply(struct neighbour *neigh, unsigned char *crypto_nonce,
+		     int len)
 {
     debugf("Sending challenge reply to %s on %s.\n",
 	   format_address(neigh->address), neigh->ifp->name);
-    start_message(&neigh->buf, MESSAGE_CHALLENGE_RESPONSE, 8);
-    accumulate_bytes(&neigh->buf, crypto_nonce, 8);
-    end_message(&neigh->buf, MESSAGE_CHALLENGE_RESPONSE, 8);
+    start_message(&neigh->buf, MESSAGE_CHALLENGE_RESPONSE, len);
+    accumulate_bytes(&neigh->buf, crypto_nonce, len);
+    end_message(&neigh->buf, MESSAGE_CHALLENGE_RESPONSE, len);
     schedule_flush_now(&neigh->buf);
 }
 
