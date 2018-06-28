@@ -47,8 +47,9 @@ struct neighbour {
     int have_nonce;
     unsigned char pc[4];
     unsigned char crypto_nonce[32];
-    unsigned char challenge_nonce[10];
     int nonce_len;
+    unsigned char challenge_nonce[10];
+    struct timeval challenge_deadline;
     struct interface *ifp;
     struct buffered buf;
 };

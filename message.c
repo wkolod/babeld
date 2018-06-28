@@ -351,35 +351,35 @@ preparse_packet(const unsigned char *packet, int bodylen,
             break;
         }
 	if(type == MESSAGE_CRYPTO_SEQNO) {
-	    if(!neigh->have_nonce) {
-		send_challenge_req(neigh);
-		return 0;
-	    } else if(len != neigh->nonce_len) {
-		send_challenge_req(neigh);
-		return 0;
-	    } else if (memcmp(neigh->crypto_nonce, message + 6,
-			      neigh->nonce_len)){
-		send_challenge_req(neigh);
-		return 0;
-	    } else if(memcmp(neigh->pc, message + 2, 4) >= 0 ){
+	    if(!neigh->have_nonce || len != neigh->nonce_len
+	       || memcmp(neigh->crypto_nonce, message + 6,
+			 neigh->nonce_len) != 0) {
+		break;
+	    } else if(memcmp(neigh->pc, message + 2, 4) >= 0) {
 		fprintf(stderr, "PC too old.\n");
 		return 0;
 	    }
 	    memcpy(neigh->pc, message + 2, 4);
+	    memcpy(neigh->crypto_nonce, message + 6, neigh->nonce_len);
+	    neigh->have_nonce = 1;
 	    nb_pc++;
         } else if(type == MESSAGE_CHALLENGE_RESPONSE) {
-	    if(len != 10) {
-		fprintf(stderr, "Didn't complete the challenge.\n");
-		return 0;
-	    } else if(memcmp(neigh->challenge_nonce, message + 2, 10)) {
+	    gettime(&now);
+	    if(len != 10
+	       || memcmp(neigh->challenge_nonce, message + 2, 10) != 0
+	       || timeval_compare(&neigh->challenge_deadline, &now) > 0) {
 		fprintf(stderr, "Didn't complete the challenge.\n");
 		return 0;
 	    }
+	} else if(type == MESSAGE_CHALLENGE_REQUEST) {
+	    unsigned char crypto_nonce[len];
+	    memcpy(crypto_nonce, message + 4, len);
+	    send_challenge_reply(neigh, crypto_nonce, len);
 	}
 	i += len + 2;
     }
-    if(nb_pc != 1) {
-	fprintf(stderr, "Refuse PC.\n");
+    if(nb_pc < 1) {
+	send_challenge_req(neigh);
 	return 0;
     }
     return 1;
@@ -497,11 +497,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
             if(rc < 0)
                 goto done;
             /* Nothing right now */
-	} else if(type == MESSAGE_CHALLENGE_REQUEST) {
-	    unsigned char crypto_nonce[len];
-	    memcpy(crypto_nonce, message + 4, len);
-	    send_challenge_reply(neigh, crypto_nonce, len);
-        } else if(type == MESSAGE_HELLO) {
+	} else if(type == MESSAGE_HELLO) {
             unsigned short seqno, interval;
             int unicast, changed, have_timestamp, rc;
             unsigned int timestamp;
@@ -1143,6 +1139,8 @@ send_challenge_req(struct neighbour *neigh)
     start_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, 10);
     accumulate_bytes(&neigh->buf, neigh->challenge_nonce, 10);
     end_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, 10);
+    gettime(&now);
+    timeval_add_msec(&neigh->challenge_deadline, &now, 300);
     schedule_flush_now(&neigh->buf);
 }
 
