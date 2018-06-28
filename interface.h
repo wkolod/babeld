@@ -106,8 +106,6 @@ struct buffered {
     int hello;
 };
 
-#define CRYPTO_NONCE_LEN 8
-
 struct interface {
     struct interface *next;
     struct interface_conf *conf;

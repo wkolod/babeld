@@ -45,7 +45,8 @@ struct neighbour {
     unsigned int rtt;
     struct timeval rtt_time;
     unsigned char pc[4];
-    unsigned char crypto_nonce[CRYPTO_NONCE_LEN];
+    unsigned char crypto_nonce[256];
+    int nonce_len;
     struct interface *ifp;
     struct buffered buf;
 };

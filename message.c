@@ -52,6 +52,7 @@ struct timeval seqno_time = {0, 0};
 
 unsigned int last_pc = 0;
 unsigned char last_nonce[256] = {0};
+int nonce_len = 0;
 
 extern const unsigned char v4prefix[16];
 
@@ -330,7 +331,13 @@ preparse_packet(const unsigned char *packet, int bodylen,
     int i, nb_pc;
     const unsigned char *message;
     unsigned char type, len;
+    unsigned short interval;
 
+    if(6 > bodylen) {
+	fprintf(stderr, "Received truncated message.\n");
+	break;
+    }
+    DO_NTOHS(interval, packet + 6);
     nb_pc = 0;
     i = 0;
     while(i < bodylen) {
@@ -357,6 +364,7 @@ preparse_packet(const unsigned char *packet, int bodylen,
 	    if(neigh->pc == NULL || neigh->crypto_nonce == NULL ||
 	       memcmp(neigh->crypto_nonce, sender_nonce, 8) != 0) {
 		send_challenge_req(neigh);
+		schedule_flush_ms(&neigh->buf, roughly(interval * 6));
 		return 0;
 	    } else if(memcmp(neigh->pc, pc, 4) >= 0 ){
 		fprintf(stderr, "PC too old.\n");
@@ -500,6 +508,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
 	    unsigned char crypto_nonce[8];
 	    memcpy(crypto_nonce, message + 4, 8);
 	    send_challenge_reply(neigh, crypto_nonce);
+	    schedule_flush_ms(&neigh->buf, roughly(interval * 6));
         } else if(type == MESSAGE_HELLO) {
             unsigned short seqno, interval;
             int unicast, changed, have_timestamp, rc;
