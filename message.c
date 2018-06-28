@@ -351,6 +351,8 @@ preparse_packet(const unsigned char *packet, int bodylen,
             break;
         }
 	if(type == MESSAGE_CRYPTO_SEQNO) {
+            debugf("Received crypto seqno from %s.\n",
+                   format_address(neigh->address));
 	    if(!neigh->have_nonce || len != neigh->nonce_len
 	       || memcmp(neigh->crypto_nonce, message + 6,
 			 neigh->nonce_len) != 0) {
@@ -364,6 +366,8 @@ preparse_packet(const unsigned char *packet, int bodylen,
 	    neigh->have_nonce = 1;
 	    nb_pc++;
         } else if(type == MESSAGE_CHALLENGE_RESPONSE) {
+            debugf("Received challenge response from %s.\n",
+                   format_address(neigh->address));
 	    gettime(&now);
 	    if(len != 10
 	       || memcmp(neigh->challenge_nonce, message + 2, 10) != 0
@@ -372,6 +376,8 @@ preparse_packet(const unsigned char *packet, int bodylen,
 		return 0;
 	    }
 	} else if(type == MESSAGE_CHALLENGE_REQUEST) {
+            debugf("Received challenge request from %s.\n",
+                   format_address(neigh->address));
 	    unsigned char crypto_nonce[len];
 	    memcpy(crypto_nonce, message + 4, len);
 	    send_challenge_reply(neigh, crypto_nonce, len);
