@@ -138,8 +138,6 @@ struct interface {
     unsigned int rtt_min;
     unsigned int rtt_max;
     unsigned int max_rtt_penalty;
-    unsigned char pc[6];
-    unsigned char nonce[CRYPTO_NONCE_LEN];
 };
 
 #define IF_CONF(_ifp, _field) \

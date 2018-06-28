@@ -50,8 +50,9 @@ int split_horizon = 1;
 unsigned short myseqno = 0;
 struct timeval seqno_time = {0, 0};
 
-unsigned int last_pc = 0;
+unsigned char last_pc[4] = {0};
 unsigned char last_nonce[256] = {0};
+int nonce_len = 10;
 
 extern const unsigned char v4prefix[16];
 
@@ -349,7 +350,7 @@ preparse_packet(const unsigned char *packet, int bodylen,
             fprintf(stderr, "Received truncated message.\n");
             break;
         }
-	if(type == MESSAGE_PC) {
+	if(type == MESSAGE_CRYPTO_SEQNO) {
             unsigned char pc[4];
 	    unsigned char sender_nonce[8];
 	    memcpy(pc, message + 2, 4);
@@ -370,7 +371,7 @@ preparse_packet(const unsigned char *packet, int bodylen,
 	    unsigned char mynonce[8];
 	    memcpy(pc, message + 2, 4);
 	    memcpy(mynonce, message + 6, 8);
-	    if(memcmp(ifp->nonce, mynonce, 8)) {
+	    if(memcmp(last_nonce, mynonce, 8)) {
 		fprintf(stderr, "Didn't complete the challenge.\n");
 		return 0;
 	    }
@@ -914,7 +915,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
                    format_eui64(router_id), seqno);
             handle_request(neigh, prefix, plen, src_prefix, src_plen,
                            hopc, seqno, router_id);
-        } else if(type == MESSAGE_PC || type == MESSAGE_CHALLENGE_RESPONSE) {
+        } else if(type == MESSAGE_CRYPTO_SEQNO || type == MESSAGE_CHALLENGE_RESPONSE) {
             /* We're dealing with these in preparse_packet(). */
         } else {
             debugf("Received unknown packet type %d from %s on %s.\n",
@@ -1002,7 +1003,7 @@ flushbuf(struct buffered *buf)
 
     if(buf->len > 0) {
         if(buf->key != NULL && buf->key->type != 0)
-            send_mynonce(buf);
+            send_crypto_seqno(buf);
         debugf("  (flushing %d buffered bytes)\n", buf->len);
         DO_HTONS(packet_header + 2, buf->len);
         fill_rtt_message(buf);
@@ -1110,16 +1111,15 @@ accumulate_bytes(struct buffered *buf,
 }
 
 void
-send_mynonce(struct buffered *buf)
+send_crypto_seqno(struct buffered *buf)
 {
-    start_message(buf, MESSAGE_PC, 4);
-    last_pc++;
+    start_message(buf, MESSAGE_CRYPTO_SEQNO, 12);
+    (*last_pc)++;
     if(last_pc == 0)
-	    read_random_bytes(last_nonce, 8);
-    accumulate_int(buf, last_pc);
-    accumulate_bytes(buf, last_nonce, 8);
-    debugf("adding pc: %hu \n", last_pc);
-    end_message(buf, MESSAGE_PC, 4);
+	read_random_bytes(last_nonce, nonce_len);
+    accumulate_int(buf, *last_pc);
+    accumulate_bytes(buf, last_nonce, nonce_len);
+    end_message(buf, MESSAGE_CRYPTO_SEQNO, 12);
 }
 
 void
@@ -1138,7 +1138,7 @@ void
 send_challenge_req(struct neighbour *neigh)
 {
     unsigned char random_nonce[8];
-    printf("Sending challenge request to %s on %s.\n",
+    debugf("Sending challenge request to %s on %s.\n",
 	   format_address(neigh->address), neigh->ifp->name);
     read_random_bytes(random_nonce, 8);
     start_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, 8);
