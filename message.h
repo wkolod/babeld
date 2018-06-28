@@ -65,10 +65,10 @@ void parse_packet(const unsigned char *from, struct interface *ifp,
 		  const unsigned char *to);
 void flushbuf(struct buffered *buf);
 void flushupdates(struct interface *ifp);
-void send_pc(struct buffered *buf);
+void send_mynonce(struct buffered *buf);
 void send_ack(struct neighbour *neigh, unsigned short nonce,
               unsigned short interval);
-void send_challenge_req(struct neighbour *neigh, unsigned char *crypto_nonce);
+void send_challenge_req(struct neighbour *neigh);
 void send_challenge_reply(struct neighbour *neigh, unsigned char *crypto_nonce);
 void send_hello_noihu(struct interface *ifp, unsigned interval);
 void send_hello(struct interface *ifp);

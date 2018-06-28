@@ -50,7 +50,8 @@ int split_horizon = 1;
 unsigned short myseqno = 0;
 struct timeval seqno_time = {0, 0};
 
-unsigned char last_tspc[6] = {0};
+unsigned int last_pc = 0;
+unsigned char last_nonce[256] = {0};
 
 extern const unsigned char v4prefix[16];
 
@@ -354,9 +355,11 @@ preparse_packet(const unsigned char *packet, int bodylen,
 	    memcpy(pc, message + 2, 4);
 	    memcpy(sender_nonce, message + 6, 8);
 	    if(neigh->pc == NULL || neigh->crypto_nonce == NULL ||
-	       memcmp(neigh->pc, pc, 4) >= 0 ||
 	       memcmp(neigh->crypto_nonce, sender_nonce, 8) != 0) {
-		send_challenge_req(neigh, ifp->nonce);
+		send_challenge_req(neigh);
+		return 0;
+	    } else if(memcmp(neigh->pc, pc, 4) >= 0 ){
+		fprintf(stderr, "PC too old.\n");
 		return 0;
 	    }
 	    memcpy(neigh->pc, pc, 4);
@@ -998,18 +1001,18 @@ flushbuf(struct buffered *buf)
     assert(buf->len <= buf->size);
 
     if(buf->len > 0) {
-	if(buf->key != NULL && buf->key->type != 0)
-	    send_pc(buf);
+        if(buf->key != NULL && buf->key->type != 0)
+            send_mynonce(buf);
         debugf("  (flushing %d buffered bytes)\n", buf->len);
         DO_HTONS(packet_header + 2, buf->len);
         fill_rtt_message(buf);
-	if(buf->key != NULL && buf->key->type != 0) {
-	    hmac_space = add_hmac(packet_header, buf, 1);
-	    if(hmac_space == -1) {
-		fprintf(stderr, "Couldn't add HMAC.\n");
-		return;
-	    }
-	}
+        if(buf->key != NULL && buf->key->type != 0) {
+            hmac_space = add_hmac(packet_header, buf, 1);
+            if(hmac_space == -1) {
+                fprintf(stderr, "Couldn't add HMAC.\n");
+                return;
+            }
+        }
         rc = babel_send(protocol_socket,
                         packet_header, sizeof(packet_header),
                         buf->buf, (buf->len + hmac_space),
@@ -1053,16 +1056,16 @@ static void
 ensure_space(struct buffered *buf, int space)
 {
     if(buf->key != NULL)
-	space += MAX_HMAC_SPACE + TLV_TSPC_LEN;
+        space += MAX_HMAC_SPACE + TLV_TSPC_LEN;
     if(buf->size - buf->len < space)
-	flushbuf(buf);
+        flushbuf(buf);
 }
 
 static void
 start_message(struct buffered *buf, int type, int len)
 {
     int space =
-	buf->key == NULL ? len + 2 : len + 2 + MAX_HMAC_SPACE + TLV_TSPC_LEN;
+        buf->key == NULL ? len + 2 : len + 2 + MAX_HMAC_SPACE + TLV_TSPC_LEN;
     if(buf->size - buf->len < space)
         flushbuf(buf);
     buf->buf[buf->len++] = type;
@@ -1107,16 +1110,14 @@ accumulate_bytes(struct buffered *buf,
 }
 
 void
-send_pc(struct buffered *buf)
+send_mynonce(struct buffered *buf)
 {
-    unsigned int last_pc = 0;
     start_message(buf, MESSAGE_PC, 4);
-    /* DO_NTOHL(last_pc, ifp->pc); */
     last_pc++;
-    /* if(last_pc == 0)
-       ifp->nonce = random(); */
-    /* DO_HTONL(ifp->pc, last_pc); */
-    accumulate_int(buf, last_pc); /* ifp->nonce instead of last_pc */
+    if(last_pc == 0)
+	    read_random_bytes(last_nonce, 8);
+    accumulate_int(buf, last_pc);
+    accumulate_bytes(buf, last_nonce, 8);
     debugf("adding pc: %hu \n", last_pc);
     end_message(buf, MESSAGE_PC, 4);
 }
@@ -1134,12 +1135,14 @@ send_ack(struct neighbour *neigh, unsigned short nonce, unsigned short interval)
 }
 
 void
-send_challenge_req(struct neighbour *neigh, unsigned char *crypto_nonce)
+send_challenge_req(struct neighbour *neigh)
 {
+    unsigned char random_nonce[8];
     printf("Sending challenge request to %s on %s.\n",
 	   format_address(neigh->address), neigh->ifp->name);
+    read_random_bytes(random_nonce, 8);
     start_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, 8);
-    accumulate_bytes(&neigh->buf, crypto_nonce, 8);
+    accumulate_bytes(&neigh->buf, random_nonce, 8);
     end_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, 8);
 }
 
