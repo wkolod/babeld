@@ -371,7 +371,7 @@ preparse_packet(const unsigned char *packet, int bodylen,
 	    gettime(&now);
 	    if(len != 10
 	       || memcmp(neigh->challenge_nonce, message + 2, 10) != 0
-	       || timeval_compare(&neigh->challenge_deadline, &now) > 0) {
+	       || timeval_compare(&now, &neigh->challenge_deadline) > 0) {
 		fprintf(stderr, "Didn't complete the challenge.\n");
 		return 0;
 	    }
