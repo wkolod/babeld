@@ -1773,7 +1773,7 @@ send_self_update(struct interface *ifp)
 }
 
 void
-buffer_ihu(struct interface *ifp, struct buffered *buf, unsigned short rxcost,
+buffer_ihu(struct buffered *buf, unsigned short rxcost,
            unsigned short interval, const unsigned char *address,
            int rtt_data, unsigned int t1, unsigned int t2)
 {
@@ -1849,7 +1849,7 @@ send_ihu(struct neighbour *neigh, struct interface *ifp)
         send_rtt_data = 0;
     }
 
-    buffer_ihu(ifp, &ifp->buf, rxcost, interval, neigh->address,
+    buffer_ihu(&ifp->buf, rxcost, interval, neigh->address,
                send_rtt_data, neigh->hello_send_us,
                time_us(neigh->hello_rtt_receive_time));
 
