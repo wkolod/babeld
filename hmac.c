@@ -214,7 +214,12 @@ add_hmac(unsigned char *packet_header, struct buffered *message, int nb_hmac)
     debugf("add_hmac %s -> %s\n",
 	   format_address(addr_src), format_address(addr_dst));
 
-    while (nb_hmac > 0) {
+    if(buf_len + 2 + DIGEST_LEN > message->size) {
+        fprintf(stderr, "Buffer overflow in add_hmac.\n");
+        return -1;
+    }
+
+    while(nb_hmac > 0) {
         buf[i] = MESSAGE_HMAC;
 	buf[i+1] = DIGEST_LEN;
 	hmaclen = compute_hmac(addr_src, addr_dst, packet_header,
