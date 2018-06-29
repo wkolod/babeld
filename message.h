@@ -23,8 +23,6 @@ THE SOFTWARE.
 #define MAX_BUFFERED_UPDATES 200
 #define MAX_HMAC_SPACE 48
 
-#define TLV_TSPC_LEN 8
-
 #define MESSAGE_PAD1 0
 #define MESSAGE_PADN 1
 #define MESSAGE_ACK_REQ 2
@@ -37,20 +35,20 @@ THE SOFTWARE.
 #define MESSAGE_REQUEST 9
 #define MESSAGE_MH_REQUEST 10
 /* 11 and 12 are for authentication */
-#define MESSAGE_CRYPTO_SEQNO 11
-#define MESSAGE_HMAC 12
 #define MESSAGE_UPDATE_SRC_SPECIFIC 13
 #define MESSAGE_REQUEST_SRC_SPECIFIC 14
 #define MESSAGE_MH_REQUEST_SRC_SPECIFIC 15
-#define MESSAGE_CHALLENGE_REQUEST 16
-#define MESSAGE_CHALLENGE_RESPONSE 17
+
+#define MESSAGE_CRYPTO_SEQNO 121
+#define MESSAGE_HMAC 122
+#define MESSAGE_CHALLENGE_REQUEST 123
+#define MESSAGE_CHALLENGE_RESPONSE 124
 
 /* Protocol extension through sub-TLVs. */
 #define SUBTLV_PAD1 0
 #define SUBTLV_PADN 1
 #define SUBTLV_DIVERSITY 2 /* Also known as babelz. */
 #define SUBTLV_TIMESTAMP 3 /* Used to compute RTT. */
-#define SUBTLV_ECHO 4
 
 extern unsigned short myseqno;
 extern struct timeval seqno_time;

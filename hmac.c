@@ -27,7 +27,6 @@ THE SOFTWARE.
 #include <netinet/in.h>
 #include <openssl/sha.h>
 #include <openssl/ripemd.h>
-#include <time.h>
 
 #include "babeld.h"
 #include "interface.h"
@@ -35,7 +34,6 @@ THE SOFTWARE.
 #include "util.h"
 #include "hmac.h"
 #include "configuration.h"
-#include "kernel.h"
 #include "message.h"
 
 struct key **keys = NULL;

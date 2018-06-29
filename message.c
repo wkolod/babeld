@@ -933,7 +933,9 @@ parse_packet(const unsigned char *from, struct interface *ifp,
                    format_eui64(router_id), seqno);
             handle_request(neigh, prefix, plen, src_prefix, src_plen,
                            hopc, seqno, router_id);
-        } else if(type == MESSAGE_CRYPTO_SEQNO || type == MESSAGE_CHALLENGE_RESPONSE) {
+        } else if(type == MESSAGE_CRYPTO_SEQNO ||
+		  type == MESSAGE_CHALLENGE_REQUEST ||
+		  type == MESSAGE_CHALLENGE_RESPONSE) {
             /* We're dealing with these in preparse_packet(). */
         } else {
             debugf("Received unknown packet type %d from %s on %s.\n",
@@ -1075,7 +1077,7 @@ static void
 ensure_space(struct buffered *buf, int space)
 {
     if(buf->key != NULL)
-        space += MAX_HMAC_SPACE + TLV_TSPC_LEN;
+        space += MAX_HMAC_SPACE + 6 + nonce_len;
     if(buf->size - buf->len < space)
         flushbuf(buf);
 }
@@ -1084,7 +1086,7 @@ static void
 start_message(struct buffered *buf, int type, int len)
 {
     int space =
-        buf->key == NULL ? len + 2 : len + 2 + MAX_HMAC_SPACE + TLV_TSPC_LEN;
+        buf->key == NULL ? len + 2 : len + 2 + MAX_HMAC_SPACE + 6 + nonce_len;
     if(buf->size - buf->len < space)
         flushbuf(buf);
     buf->buf[buf->len++] = type;
