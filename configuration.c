@@ -352,6 +352,18 @@ gethex(int c, unsigned char **value_r, int *len_r, gnc_t gnc, void *closure)
     return c;
 }
 
+static void
+free_filter(struct filter *f)
+{
+    free(f->ifname);
+    free(f->id);
+    free(f->prefix);
+    free(f->src_prefix);
+    free(f->neigh);
+    free(f->action.src_prefix);
+    free(f);
+}
+
 static int
 parse_filter(int c, gnc_t gnc, void *closure, struct filter **filter_return)
 {
@@ -372,7 +384,7 @@ parse_filter(int c, gnc_t gnc, void *closure, struct filter **filter_return)
         }
         c = getword(c, &token, gnc, closure);
         if(c < -1) {
-            free(filter);
+            free_filter(filter);
             return -2;
         }
 
@@ -482,8 +494,6 @@ parse_filter(int c, gnc_t gnc, void *closure, struct filter **filter_return)
                 filter->af = af;
             else if(filter->af != af)
                 goto error;
-            if(af == AF_INET && filter->action.src_plen == 96)
-                memset(&filter->action.src_prefix, 0, 16);
         } else if(strcmp(token, "table") == 0) {
             int table;
             c = getint(c, &table, gnc, closure);
@@ -501,15 +511,21 @@ parse_filter(int c, gnc_t gnc, void *closure, struct filter **filter_return)
            filter->src_plen_le < 128 || filter->src_plen_ge > 0)
             filter->af = AF_INET6;
     } else if(filter->af == AF_INET) {
-        filter->plen_le += 96;
-        filter->plen_ge += 96;
+        if(filter->plen_le < 128)
+            filter->plen_le += 96;
+        if(filter->plen_ge > 0)
+            filter->plen_ge += 96;
+        if(filter->src_plen_le < 128)
+            filter->src_plen_le += 96;
+        if(filter->src_plen_ge > 0)
+            filter->src_plen_ge += 96;
     }
     *filter_return = filter;
     return c;
 
  error:
     free(token);
-    free(filter);
+    free_filter(filter);
     return -2;
 }
 
@@ -664,6 +680,8 @@ parse_anonymous_ifconf(int c, gnc_t gnc, void *closure,
     return c;
 
  error:
+    if(if_conf->ifname)
+        free(if_conf->ifname);
     free(if_conf);
     return -2;
 }
@@ -817,6 +835,7 @@ add_ifconf(struct interface_conf *if_conf, struct interface_conf **if_confs)
         while(next) {
             if(strcmp(next->ifname, if_conf->ifname) == 0) {
                 merge_ifconf(next, if_conf, next);
+                free(if_conf->ifname);
                 free(if_conf);
                 if_conf = next;
                 goto done;
@@ -838,6 +857,7 @@ flush_ifconf(struct interface_conf *if_conf)
 {
     if(if_conf == interface_confs) {
         interface_confs = if_conf->next;
+        free(if_conf->ifname);
         free(if_conf);
         return;
     } else {
@@ -845,6 +865,7 @@ flush_ifconf(struct interface_conf *if_conf)
         while(prev) {
             if(prev->next == if_conf) {
                 prev->next = if_conf->next;
+                free(if_conf->ifname);
                 free(if_conf);
                 return;
             }
