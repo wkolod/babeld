@@ -352,8 +352,8 @@ preparse_packet(const unsigned char *packet, int bodylen,
             fprintf(stderr, "Received truncated message.\n");
             break;
         }
-	if(type == MESSAGE_CRYPTO_SEQNO) {
-            debugf("Received crypto seqno from %s.\n",
+	if(type == MESSAGE_PC) {
+            debugf("Received PC from %s.\n",
                    format_address(neigh->address));
             memcpy(pc, message + 2, 4);
             nonce_len = len - 4;
@@ -933,7 +933,7 @@ parse_packet(const unsigned char *from, struct interface *ifp,
                    format_eui64(router_id), seqno);
             handle_request(neigh, prefix, plen, src_prefix, src_plen,
                            hopc, seqno, router_id);
-        } else if(type == MESSAGE_CRYPTO_SEQNO ||
+        } else if(type == MESSAGE_PC ||
 		  type == MESSAGE_CHALLENGE_REQUEST ||
 		  type == MESSAGE_CHALLENGE_RESPONSE) {
             /* We're dealing with these in preparse_packet(). */
@@ -1133,13 +1133,13 @@ accumulate_bytes(struct buffered *buf,
 void
 send_crypto_seqno(struct buffered *buf)
 {
-    start_message(buf, MESSAGE_CRYPTO_SEQNO, nonce_len + 4);
+    start_message(buf, MESSAGE_PC, nonce_len + 4);
     (*last_pc)++;
     if(last_pc == 0)
 	read_random_bytes(last_nonce, nonce_len);
     accumulate_int(buf, *last_pc);
     accumulate_bytes(buf, last_nonce, nonce_len);
-    end_message(buf, MESSAGE_CRYPTO_SEQNO, nonce_len + 4);
+    end_message(buf, MESSAGE_PC, nonce_len + 4);
 }
 
 void
