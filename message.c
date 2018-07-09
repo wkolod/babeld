@@ -449,12 +449,6 @@ parse_packet(const unsigned char *from, struct interface *ifp,
         return;
     }
 
-    neigh = find_neighbour(from, ifp);
-    if(neigh == NULL) {
-        fprintf(stderr, "Couldn't allocate neighbour.\n");
-        return;
-    }
-
     DO_NTOHS(bodylen, packet + 2);
 
     if(bodylen + 4 > packetlen) {
@@ -464,12 +458,20 @@ parse_packet(const unsigned char *from, struct interface *ifp,
     }
 
     if(ifp->buf.key != NULL && ifp->buf.key->type != 0) {
-	if(check_hmac(packet, packetlen, bodylen, neigh->address,
+	if(check_hmac(packet, packetlen, bodylen, from,
 		      to) != 1) {
 	    fprintf(stderr, "Received wrong hmac.\n");
 	    return;
 	}
+    }
 
+    neigh = find_neighbour(from, ifp);
+    if(neigh == NULL) {
+        fprintf(stderr, "Couldn't allocate neighbour.\n");
+        return;
+    }
+
+    if(ifp->buf.key != NULL && ifp->buf.key->type != 0) {
 	if(preparse_packet(packet, bodylen, neigh, ifp) == 0) {
 	    fprintf(stderr, "Received wrong PC or failed the challenge.\n");
 	    return;
