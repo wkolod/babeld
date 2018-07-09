@@ -136,6 +136,9 @@ struct interface {
     unsigned int rtt_min;
     unsigned int rtt_max;
     unsigned int max_rtt_penalty;
+    unsigned char last_pc[4];
+    unsigned char last_nonce[32];
+    int nonce_len;
 };
 
 #define IF_CONF(_ifp, _field) \

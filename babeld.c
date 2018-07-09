@@ -584,7 +584,7 @@ main(int argc, char **argv)
         send_self_update(ifp);
         send_multicast_request(ifp, NULL, 0, NULL, 0);
         flushupdates(ifp);
-        flushbuf(&ifp->buf);
+        flushbuf(&ifp->buf, ifp);
     }
 
     debugf("Entering main loop.\n");
@@ -781,7 +781,7 @@ main(int argc, char **argv)
             if(ifp->buf.timeout.tv_sec != 0) {
                 if(timeval_compare(&now, &ifp->buf.timeout) >= 0) {
                     flushupdates(ifp);
-                    flushbuf(&ifp->buf);
+                    flushbuf(&ifp->buf, ifp);
                 }
             }
         }
@@ -789,7 +789,7 @@ main(int argc, char **argv)
         FOR_ALL_NEIGHBOURS(neigh) {
             if(neigh->buf.timeout.tv_sec != 0) {
                 if(timeval_compare(&now, &neigh->buf.timeout) >= 0) {
-                    flushbuf(&neigh->buf);
+                    flushbuf(&neigh->buf, neigh->ifp);
                 }
             }
         }
@@ -814,7 +814,7 @@ main(int argc, char **argv)
         /* Make sure that we expire quickly from our neighbours'
            association caches. */
         send_hello_noihu(ifp, 10);
-        flushbuf(&ifp->buf);
+        flushbuf(&ifp->buf, ifp);
         usleep(roughly(1000));
         gettime(&now);
     }
@@ -824,7 +824,7 @@ main(int argc, char **argv)
         /* Make sure they got it. */
         send_wildcard_retraction(ifp);
         send_hello_noihu(ifp, 1);
-        flushbuf(&ifp->buf);
+        flushbuf(&ifp->buf, ifp);
         usleep(roughly(10000));
         gettime(&now);
         interface_up(ifp, 0);

@@ -61,9 +61,9 @@ extern unsigned char packet_header[4];
 void parse_packet(const unsigned char *from, struct interface *ifp,
                   const unsigned char *packet, int packetlen,
 		  const unsigned char *to);
-void flushbuf(struct buffered *buf);
+void flushbuf(struct buffered *buf, struct interface *ifp);
 void flushupdates(struct interface *ifp);
-void send_crypto_seqno(struct buffered *buf);
+void send_crypto_seqno(struct buffered *buf, struct interface *ifp);
 void send_ack(struct neighbour *neigh, unsigned short nonce,
               unsigned short interval);
 void send_challenge_req(struct neighbour *neigh);

@@ -50,10 +50,6 @@ int split_horizon = 1;
 unsigned short myseqno = 0;
 struct timeval seqno_time = {0, 0};
 
-unsigned char last_pc[4] = {0};
-unsigned char last_nonce[32] = {0};
-int nonce_len = 10;
-
 extern const unsigned char v4prefix[16];
 
 #define MAX_CHANNEL_HOPS 20
@@ -1017,7 +1013,7 @@ fill_rtt_message(struct buffered *buf)
 }
 
 void
-flushbuf(struct buffered *buf)
+flushbuf(struct buffered *buf, struct interface *ifp)
 {
     int rc;
     int hmac_space = 0;
@@ -1025,7 +1021,7 @@ flushbuf(struct buffered *buf)
 
     if(buf->len > 0) {
         if(buf->key != NULL && buf->key->type != 0)
-            send_crypto_seqno(buf);
+            send_crypto_seqno(buf, ifp);
         debugf("  (flushing %d buffered bytes)\n", buf->len);
         DO_HTONS(packet_header + 2, buf->len);
         fill_rtt_message(buf);
@@ -1076,21 +1072,21 @@ schedule_flush_now(struct buffered *buf)
 }
 
 static void
-ensure_space(struct buffered *buf, int space)
+ensure_space(struct buffered *buf, struct interface *ifp, int space)
 {
     if(buf->key != NULL)
-        space += MAX_HMAC_SPACE + 6 + nonce_len;
+        space += MAX_HMAC_SPACE + 6 + ifp->nonce_len;
     if(buf->size - buf->len < space)
-        flushbuf(buf);
+        flushbuf(buf, ifp);
 }
 
 static void
-start_message(struct buffered *buf, int type, int len)
+start_message(struct buffered *buf, struct interface *ifp, int type, int len)
 {
     int space =
-        buf->key == NULL ? len + 2 : len + 2 + MAX_HMAC_SPACE + 6 + nonce_len;
+        buf->key == NULL ? len + 2 : len + 2 + MAX_HMAC_SPACE + 6 + ifp->nonce_len;
     if(buf->size - buf->len < space)
-        flushbuf(buf);
+        flushbuf(buf, ifp);
     buf->buf[buf->len++] = type;
     buf->buf[buf->len++] = len;
 }
@@ -1133,15 +1129,15 @@ accumulate_bytes(struct buffered *buf,
 }
 
 void
-send_crypto_seqno(struct buffered *buf)
+send_crypto_seqno(struct buffered *buf, struct interface *ifp)
 {
-    start_message(buf, MESSAGE_PC, nonce_len + 4);
-    (*last_pc)++;
-    if(last_pc == 0)
-	read_random_bytes(last_nonce, nonce_len);
-    accumulate_int(buf, *last_pc);
-    accumulate_bytes(buf, last_nonce, nonce_len);
-    end_message(buf, MESSAGE_PC, nonce_len + 4);
+    start_message(buf, ifp, MESSAGE_PC, ifp->nonce_len + 4);
+    (*ifp->last_pc)++;
+    if(ifp->last_pc == 0)
+	read_random_bytes(ifp->last_nonce, ifp->nonce_len);
+    accumulate_int(buf, *ifp->last_pc);
+    accumulate_bytes(buf, ifp->last_nonce, ifp->nonce_len);
+    end_message(buf, MESSAGE_PC, ifp->nonce_len + 4);
 }
 
 void
@@ -1149,7 +1145,7 @@ send_ack(struct neighbour *neigh, unsigned short nonce, unsigned short interval)
 {
     debugf("Sending ack (%04x) to %s on %s.\n",
            nonce, format_address(neigh->address), neigh->ifp->name);
-    start_message(&neigh->buf, MESSAGE_ACK, 2);
+    start_message(&neigh->buf, neigh->ifp, MESSAGE_ACK, 2);
     accumulate_short(&neigh->buf, nonce);
     end_message(&neigh->buf, MESSAGE_ACK, 2);
     /* Roughly yields a value no larger than 3/2, so this meets the deadline */
@@ -1162,7 +1158,7 @@ send_challenge_req(struct neighbour *neigh)
     debugf("Sending challenge request to %s on %s.\n",
 	   format_address(neigh->address), neigh->ifp->name);
     read_random_bytes(neigh->challenge_nonce, 10);
-    start_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, 10);
+    start_message(&neigh->buf, neigh->ifp, MESSAGE_CHALLENGE_REQUEST, 10);
     accumulate_bytes(&neigh->buf, neigh->challenge_nonce, 10);
     end_message(&neigh->buf, MESSAGE_CHALLENGE_REQUEST, 10);
     gettime(&now);
@@ -1176,7 +1172,7 @@ send_challenge_reply(struct neighbour *neigh, unsigned char *crypto_nonce,
 {
     debugf("Sending challenge reply to %s on %s.\n",
 	   format_address(neigh->address), neigh->ifp->name);
-    start_message(&neigh->buf, MESSAGE_CHALLENGE_RESPONSE, len);
+    start_message(&neigh->buf, neigh->ifp, MESSAGE_CHALLENGE_RESPONSE, len);
     accumulate_bytes(&neigh->buf, crypto_nonce, len);
     end_message(&neigh->buf, MESSAGE_CHALLENGE_RESPONSE, len);
     schedule_flush_now(&neigh->buf);
@@ -1189,7 +1185,7 @@ send_hello_noihu(struct interface *ifp, unsigned interval)
        link quality estimation. */
     if(ifp->buf.hello >= 0) {
         flushupdates(ifp);
-        flushbuf(&ifp->buf);
+        flushbuf(&ifp->buf, ifp);
     }
 
     ifp->hello_seqno = seqno_plus(ifp->hello_seqno, 1);
@@ -1201,7 +1197,7 @@ send_hello_noihu(struct interface *ifp, unsigned interval)
     debugf("Sending hello %d (%d) to %s.\n",
            ifp->hello_seqno, interval, ifp->name);
 
-    start_message(&ifp->buf, MESSAGE_HELLO, ifp->buf.enable_timestamps ? 12 : 6);
+    start_message(&ifp->buf, ifp, MESSAGE_HELLO, ifp->buf.enable_timestamps ? 12 : 6);
     ifp->buf.hello = ifp->buf.len - 2;
     accumulate_short(&ifp->buf, 0);
     accumulate_short(&ifp->buf, ifp->hello_seqno);
@@ -1258,7 +1254,7 @@ really_buffer_update(struct buffered *buf, struct interface *ifp,
 
     metric = MIN(metric + add_metric, INFINITY);
     /* Worst case */
-    ensure_space(buf, 20 + 12 + 28 + 18);
+    ensure_space(buf, ifp, 20 + 12 + 28 + 18);
 
     v4 = plen >= 96 && v4mapped(prefix);
 
@@ -1267,7 +1263,7 @@ really_buffer_update(struct buffered *buf, struct interface *ifp,
             return;
         if(!buf->have_nh ||
            memcmp(buf->nh, ifp->ipv4, 4) != 0) {
-            start_message(buf, MESSAGE_NH, 6);
+            start_message(buf, ifp, MESSAGE_NH, 6);
             accumulate_byte(buf, 1);
             accumulate_byte(buf, 0);
             accumulate_bytes(buf, ifp->ipv4, 4);
@@ -1299,7 +1295,7 @@ really_buffer_update(struct buffered *buf, struct interface *ifp,
            memcmp(real_prefix + 8, id, 8) == 0) {
             flags |= 0x40;
         } else {
-            start_message(buf, MESSAGE_ROUTER_ID, 10);
+            start_message(buf, ifp, MESSAGE_ROUTER_ID, 10);
             accumulate_short(buf, 0);
             accumulate_bytes(buf, id, 8);
             end_message(buf, MESSAGE_ROUTER_ID, 10);
@@ -1309,11 +1305,11 @@ really_buffer_update(struct buffered *buf, struct interface *ifp,
     }
 
     if(!is_ss)
-        start_message(buf,
+        start_message(buf, ifp,
                       MESSAGE_UPDATE, 10 + (real_plen + 7) / 8 - omit +
                       channels_size);
     else
-        start_message(buf, MESSAGE_UPDATE_SRC_SPECIFIC,
+        start_message(buf, ifp, MESSAGE_UPDATE_SRC_SPECIFIC,
                       10 + (real_plen + 7) / 8 - omit +
                       (real_src_plen + 7) / 8 + channels_size);
     accumulate_byte(buf, v4 ? 1 : 2);
@@ -1697,9 +1693,9 @@ send_update_resend(struct interface *ifp,
 }
 
 void
-buffer_wildcard_retraction(struct buffered *buf)
+buffer_wildcard_retraction(struct buffered *buf, struct interface *ifp)
 {
-    start_message(buf, MESSAGE_UPDATE, 10);
+    start_message(buf, ifp, MESSAGE_UPDATE, 10);
     accumulate_byte(buf, 0);
     accumulate_byte(buf, 0);
     accumulate_byte(buf, 0);
@@ -1730,11 +1726,11 @@ send_wildcard_retraction(struct interface *ifp)
         struct neighbour *neigh;
         FOR_ALL_NEIGHBOURS(neigh) {
             if(neigh->ifp == ifp) {
-                buffer_wildcard_retraction(&neigh->buf);
+                buffer_wildcard_retraction(&neigh->buf, neigh->ifp);
             }
         }
     } else {
-        buffer_wildcard_retraction(&ifp->buf);
+        buffer_wildcard_retraction(&ifp->buf, ifp);
     }
 }
 
@@ -1775,7 +1771,7 @@ send_self_update(struct interface *ifp)
 }
 
 void
-buffer_ihu(struct buffered *buf, unsigned short rxcost,
+buffer_ihu(struct buffered *buf, struct interface *ifp, unsigned short rxcost,
            unsigned short interval, const unsigned char *address,
            int rtt_data, unsigned int t1, unsigned int t2)
 {
@@ -1784,7 +1780,7 @@ buffer_ihu(struct buffered *buf, unsigned short rxcost,
     ll = linklocal(address);
     msglen = (ll ? 14 : 200) + (rtt_data ? 10 : 0);
 
-    start_message(buf, MESSAGE_IHU, msglen);
+    start_message(buf, ifp, MESSAGE_IHU, msglen);
     accumulate_byte(buf, ll ? 3 : 2);
     accumulate_byte(buf, 0);
     accumulate_short(buf, rxcost);
@@ -1851,7 +1847,7 @@ send_ihu(struct neighbour *neigh, struct interface *ifp)
         send_rtt_data = 0;
     }
 
-    buffer_ihu(&ifp->buf, rxcost, interval, neigh->address,
+    buffer_ihu(&ifp->buf, ifp, rxcost, interval, neigh->address,
                send_rtt_data, neigh->hello_send_us,
                time_us(neigh->hello_rtt_receive_time));
 
@@ -1873,7 +1869,7 @@ send_marginal_ihu(struct interface *ifp)
 /* Standard wildcard request with prefix == NULL && src_prefix == zeroes,
    Specific wildcard request with prefix == zeroes && src_prefix == NULL. */
 static void
-send_request(struct buffered *buf,
+send_request(struct buffered *buf, struct interface *ifp,
              const unsigned char *prefix, unsigned char plen,
              const unsigned char *src_prefix, unsigned char src_plen)
 {
@@ -1885,7 +1881,7 @@ send_request(struct buffered *buf,
                format_prefix(src_prefix, src_plen));
     } else if(prefix) {
         debugf("sending request for any specific.\n");
-        start_message(buf, MESSAGE_REQUEST_SRC_SPECIFIC, 3);
+        start_message(buf, ifp, MESSAGE_REQUEST_SRC_SPECIFIC, 3);
         accumulate_byte(buf, 0);
         accumulate_byte(buf, 0);
         accumulate_byte(buf, 0);
@@ -1893,14 +1889,14 @@ send_request(struct buffered *buf,
         return;
     } else if(src_prefix) {
         debugf("sending request for any.\n");
-        start_message(buf, MESSAGE_REQUEST, 2);
+        start_message(buf, ifp, MESSAGE_REQUEST, 2);
         accumulate_byte(buf, 0);
         accumulate_byte(buf, 0);
         end_message(buf, MESSAGE_REQUEST, 2);
         return;
     } else {
-        send_request(buf, NULL, 0, zeroes, 0);
-        send_request(buf, zeroes, 0, NULL, 0);
+        send_request(buf, ifp, NULL, 0, zeroes, 0);
+        send_request(buf, ifp, zeroes, 0, NULL, 0);
         return;
     }
 
@@ -1912,10 +1908,10 @@ send_request(struct buffered *buf,
     if(is_ss) {
         spb = v4 ? ((src_plen - 96) + 7) / 8 : (src_plen + 7) / 8;
         len += spb + 1;
-        start_message(buf, MESSAGE_REQUEST_SRC_SPECIFIC, len);
+        start_message(buf, ifp, MESSAGE_REQUEST_SRC_SPECIFIC, len);
     } else {
         spb = 0;
-        start_message(buf, MESSAGE_REQUEST, len);
+        start_message(buf, ifp, MESSAGE_REQUEST, len);
     }
     accumulate_byte(buf, v4 ? 1 : 2);
     accumulate_byte(buf, v4 ? plen - 96 : plen);
@@ -1961,10 +1957,10 @@ send_multicast_request(struct interface *ifp,
         struct neighbour *neigh;
         FOR_ALL_NEIGHBOURS(neigh) {
             if(neigh->ifp == ifp) {
-                send_request(&neigh->buf, prefix, plen,
+                send_request(&neigh->buf, neigh->ifp, prefix, plen,
                              src_prefix, src_plen);
             } else {
-                send_request(&ifp->buf, prefix, plen, src_prefix, src_plen);
+                send_request(&ifp->buf, ifp, prefix, plen, src_prefix, src_plen);
             }
         }
     }
@@ -1980,11 +1976,11 @@ send_unicast_request(struct neighbour *neigh,
 
     flushupdates(neigh->ifp);
 
-    send_request(&neigh->buf, prefix, plen, src_prefix, src_plen);
+    send_request(&neigh->buf, neigh->ifp, prefix, plen, src_prefix, src_plen);
 }
 
 static void
-send_multihop_request(struct buffered *buf,
+send_multihop_request(struct buffered *buf, struct interface *ifp,
                       const unsigned char *prefix, unsigned char plen,
                       const unsigned char *src_prefix, unsigned char src_plen,
                       unsigned short seqno, const unsigned char *id,
@@ -2002,10 +1998,10 @@ send_multihop_request(struct buffered *buf,
     if(is_ss) {
         spb = v4 ? ((src_plen - 96) + 7) / 8 : (src_plen + 7) / 8;
         len += spb;
-        start_message(buf, MESSAGE_MH_REQUEST_SRC_SPECIFIC, len);
+        start_message(buf, ifp, MESSAGE_MH_REQUEST_SRC_SPECIFIC, len);
     } else {
         spb = 0;
-        start_message(buf, MESSAGE_MH_REQUEST, len);
+        start_message(buf, ifp, MESSAGE_MH_REQUEST, len);
     }
     accumulate_byte(buf, v4 ? 1 : 2);
     accumulate_byte(buf, v4 ? plen - 96 : plen);
@@ -2059,13 +2055,13 @@ send_multicast_multihop_request(struct interface *ifp,
             struct neighbour *neigh;
             FOR_ALL_NEIGHBOURS(neigh) {
                 if(neigh->ifp == ifp) {
-                    send_multihop_request(&neigh->buf, prefix, plen,
+                    send_multihop_request(&neigh->buf, neigh->ifp, prefix, plen,
                                           src_prefix, src_plen,
                                           seqno, id, hop_count);
                 }
             }
     } else {
-        send_multihop_request(&ifp->buf, prefix, plen,
+        send_multihop_request(&ifp->buf, ifp, prefix, plen,
                               src_prefix, src_plen,
                               seqno, id, hop_count);
     }
@@ -2082,7 +2078,7 @@ send_unicast_multihop_request(struct neighbour *neigh,
 {
     flushupdates(neigh->ifp);
 
-    send_multihop_request(&neigh->buf, prefix, plen, src_prefix, src_plen,
+    send_multihop_request(&neigh->buf, neigh->ifp, prefix, plen, src_prefix, src_plen,
                           seqno, id, hop_count);
 }
 
@@ -2106,7 +2102,7 @@ send_request_resend(const unsigned char *prefix, unsigned char plen,
     } else {
         struct interface *ifp;
         FOR_ALL_INTERFACES(ifp)
-            send_multihop_request(&ifp->buf, prefix, plen, src_prefix, src_plen,
+            send_multihop_request(&ifp->buf, ifp, prefix, plen, src_prefix, src_plen,
                                   seqno, id, 127);
     }
 }
