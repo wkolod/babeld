@@ -142,9 +142,9 @@ compute_hmac(const unsigned char *src, const unsigned char *dst,
 	SHA1_Update(&inner_ctx, inner_key_pad, SHA1_BLOCK_SIZE);
 
 	/* Hashing the pseudo header. */
-	SHA1_Update(&inner_ctx, dst, 16);
-	SHA1_Update(&inner_ctx, &port, 2);
 	SHA1_Update(&inner_ctx, src, 16);
+	SHA1_Update(&inner_ctx, &port, 2);
+	SHA1_Update(&inner_ctx, dst, 16);
 	SHA1_Update(&inner_ctx, &port, 2);
 
 	SHA1_Update(&inner_ctx, packet_header, 4);
